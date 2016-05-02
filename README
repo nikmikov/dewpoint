@@ -1,7 +1,12 @@
-== Simple weather simulation
+Simple weather simulation
+=========================
 
-== Description
 
-== Build
 
-== Run
+### Build
+
+    stack build
+
+### Run
+
+    stack exec weathersim-exe
