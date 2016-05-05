@@ -9,4 +9,4 @@ Simple weather simulation
 
 ### Run
 
-    stack exec weathersim-exe
+    stack exec dewpoint-exe
