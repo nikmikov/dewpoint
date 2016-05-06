@@ -6,9 +6,14 @@ import urllib.request
 import shutil
 import os.path
 import logging
+from netCDF4 import Dataset
+from mpl_toolkits.basemap import Basemap
+import matplotlib
+import numpy as np
+import matplotlib.pyplot as plt
 
 datasets = {
-    'geopotentail-heigt': {
+    'geopotentail-height': {
         'url': 'ftp://ftp.cdc.noaa.gov/Datasets/ncep.reanalysis/surface_gauss/hgt.sfc.gauss.nc'
         , 'file-name': 'hgt.sfc.gauss.nc'
         , 'desc': 'Geopotential height data'
@@ -36,12 +41,49 @@ def get_or_download(e, force_reload=False):
     return e['file-name']
 
 
+def plot(bmaps, Z):
+    plt.figure(figsize=(16,16))
+    plt.contourf(bmaps['global_x'],bmaps['global_y'], Z , np.linspace(0, 1500,200), extend='both',antialiasing=False)
+    bmaps['global'].drawcoastlines()
+    plt.colorbar()
+    plt.show()
+    print('DONE')
+
+
+def create_basemaps(lats, lons):
+    """ Setup global basemaps for eventual plotting """
+    print("Creating basemaps for plotting")
+
+    long, latg = np.meshgrid(lons,lats)
+
+    # Set up a global map
+    bmap_globe = Basemap(projection='cea',llcrnrlat=-70, urcrnrlat=70,\
+                         llcrnrlon=0,urcrnrlon=360,lat_ts=20,resolution='c')
+    xg,yg = bmap_globe(long,latg)
+
+    return {'global' : bmap_globe,
+            'global_x' : xg,
+            'global_y' : yg,
+            }
+
 def run(args):
     logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s',
                         level=logging.DEBUG if args.debug else logging.INFO )
     logging.info('Starting program..')
     for key in datasets:
         get_or_download(datasets[key], args.force_reload)
+    with Dataset(datasets['geopotentail-height']['file-name'],'r') as infile:
+        lat_list = list(infile.variables['lat'][1:-1])
+        lon_list = list(infile.variables['lon'][:])
+#        lon_list.append(360.)
+        bm =  create_basemaps(lat_list, lon_list)
+        hgt = infile.variables['hgt'][0,1:-1,:]
+        hgt_last = hgt[0,:]
+#        hgt_tran = np.transpose(hgt)
+        new_hgt = np.vstack((hgt,hgt_last))
+        # Duplicate the last longitude column for periodicity
+        plot(bm, hgt )
+
 
 def parse_args(argv):
     parser = argparse.ArgumentParser('Import initial data for dewpoint weather simulator')
