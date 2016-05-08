@@ -1,6 +1,17 @@
 Simple weather simulation
 =========================
 
+### Model characteristic
+Gaussian grid 192x98 cells
+
+Every cell is an octagon connected to 8 neighbour cells: heat and air mass transfer provided by wind
+
+Winds are modelled using geostrophic equation. Only geopotential height and coriolis effect affect them
+Solar energy heats the air and evaporates water from earth/ocean surface
+Evaporation coefficient for cell is constant
+Earth energy loss to space per cell is a constant
+Ocean water movement is not considered
+Clouds/rain/snow?
 
 
 ### Build
