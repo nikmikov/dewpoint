@@ -81,17 +81,25 @@ class SimulationGrid:
         return np.clip(x-1, 0, self.len_x()) , np.clip(y-1, 0, self.len_y() - 1)
 
 
-    def temperature_diff(self, x, y, datetime):
+    def temperature_diff_per_minute(self, x, y, datetime):
         cell = self.data[x][y]
         lat = self.lats[y]
         lon = self.lons[x]
         S_raw = solar_energy_influx(lat, lon, datetime)
         albedo = 0.3 + (0.6 * cell['cloud-cover'])      #reflection coeff, increases with cloud
         S_absorbed = (1 - albedo) * S_raw
-        E_emitted = 4.0 * Earth_emissivity * Sigma * math.pow(cell['air-temperature'],4)  / 4.18
+        E_emitted = 4.0 * Earth_emissivity * Sigma * math.pow(cell['air-temperature'],4)  / 4.45
         val =  (S_absorbed - E_emitted) / (4 * 8.3 * 1.2 * 1000)
-        return  val
+        return  2*val
 
+    def get_cell_antipode(self, x, y):
+        median_x = self.len_x() // 2
+        assert(median * 2 == self.len_x() , 'This will work just for even longitude size' )
+        xa = median_x + x if x < median_x else x - median_x
+        median_y = self.len_y() // 2
+        xy_ = median_y - y  if median_y > y else y - median_y
+        xy = median_y + xy_ if median_y > y else median_y - xy_
+        return self.data[xa][xy-1]
 
 
 def plot_heights(bmaps, grid):
@@ -167,33 +175,36 @@ def create_grid(lats, lons, heights):
     return grid
 
 def integrate_step(grid, cur_time, step_minutes):
-    i = 0
-    total_temp = 0
     for x in range(grid.len_x()-1):
         for y in range(grid.len_y()-1):
             cell = grid.data[x][y]
-            temp_diff =  grid.temperature_diff(x,y,cur_time)  * step_minutes * 0.2
+            temp_diff = grid.temperature_diff_per_minute(x,y,cur_time)  * step_minutes
+#            if temp_diff > 0:
             cell['air-temperature'] += temp_diff
-            total_temp +=  cell['air-temperature']
-            i+=1
-    return  (total_temp / i)
+            #cell_ant = grid.get_cell_antipode(x,y)
+            #    cell_ant['air-temperature'] -= temp_diff
+
 
 
 def integrate(grid, step_minutes, num_days, start_date):
     delta = timedelta(minutes=step_minutes)
     end_date = start_date + timedelta(days=num_days)
     cur_time = start_date
-    i = 0
-    total_temp = 0
     x,y = grid.to_xy(52.53,13.35)
     while cur_time < end_date:
         cur_time = cur_time + delta
         #x,y = grid.to_xy(0,0)
-        total_temp += integrate_step(grid, cur_time, step_minutes)
+        integrate_step(grid, cur_time, step_minutes)
         #cell = grid.data[x][y]
-        i += 1
-        print ("{}: TOTAL: {}".format( cur_time, (total_temp / i) -Tzero ))
-        print ("Temperature in Berlin: {}".format(grid.data[x][y]['air-temperature'] - Tzero) )
+        print(x,y)
+        print ("{}:Temperature in Berlin: {}".format(cur_time,grid.data[x][y]['air-temperature'] - Tzero) )
+        total = 0
+        i = 0
+        for v in grid.data:
+            for w in v:
+                total+=w['air-temperature']
+                i+=1
+        print("Ttoal:", total/i - Tzero )
 
 def run(args):
     logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s',
@@ -206,7 +217,7 @@ def run(args):
         lon_list = list(infile.variables['lon'])
         hgt = infile.variables['hgt'][0,:,:]
         grid = create_grid(lat_list, lon_list, heights=hgt)
-        integrate(grid, 30, 30, datetime(2012,1,1))
+        integrate(grid, 60, 30, datetime(2012,5,1))
 #        lon_list.append(360.)
 #        bm =  create_basemaps(lat_list, lon_list)
 #        hgt_tran = np.transpose(hgt)
