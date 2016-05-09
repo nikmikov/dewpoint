@@ -48,7 +48,7 @@ def find_le(a, x):
     raise ValueError
 
 class SimulationGrid:
-    def __init__(self, lats, lons, heights):
+    def __init__(self, lats, lons, heights, land_sea_mask):
         self.lats = lats
         self.reversed_lats = list(reversed(lats))
         self.lons = lons
@@ -56,13 +56,14 @@ class SimulationGrid:
         for j,lon in enumerate(lons):
             sl = []
             for i,lat in enumerate(lats):
+                lsm = land_sea_mask[i, j]
                 sl.append ({
                     'height' : heights[i, j]
                     , 'v-wind' : 0
                     , 'u-wind' : 0
                     , 'pressure' : 0
                     , 'humidity' : 0
-                    , 'evaporation-coeff' : 0
+                    , 'evaporation-coeff' : 0.5 if lsm == 0 else 1.0
                     , 'cloud-cover' : 0.        # 0..1
                     , 'air-temperature' : 14 + Tzero #in Kelvin
                 })
@@ -170,10 +171,6 @@ def create_basemaps(lats, lons):
             'global_y' : yg,
             }
 
-def create_grid(lats, lons, heights):
-    grid = SimulationGrid(lats, lons, heights)
-    return grid
-
 def integrate_step(grid, cur_time, step_minutes):
     for x in range(grid.len_x()-1):
         for y in range(grid.len_y()-1):
@@ -212,11 +209,13 @@ def run(args):
     logging.info('Starting program..')
     for key in datasets:
         get_or_download(datasets[key], args.force_reload)
-    with Dataset(datasets['surface-height']['file-name'],'r') as infile:
-        lat_list = list(infile.variables['lat'])
-        lon_list = list(infile.variables['lon'])
-        hgt = infile.variables['hgt'][0,:,:]
-        grid = create_grid(lat_list, lon_list, heights=hgt)
+    with Dataset(datasets['surface-height']['file-name'],'r') as hgt_file,\
+         Dataset(datasets['land-sea-mask']['file-name'],'r') as land_file:
+        lat_list = list(hgt_file.variables['lat'])
+        lon_list = list(hgt_file.variables['lon'])
+        hgt = hgt_file.variables['hgt'][0,:,:]
+        land = land_file.variables['land'][0,:,:]
+        grid = SimulationGrid(lat_list, lon_list, hgt, land)
         integrate(grid, 60, 30, datetime(2012,5,1))
 #        lon_list.append(360.)
 #        bm =  create_basemaps(lat_list, lon_list)
