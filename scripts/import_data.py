@@ -33,14 +33,15 @@ datasets = {
     }
 }
 
-Re = 6378100.    # Radius of earth (m)
-Atm_h = 8300.    # vertical extent of air layer (m)
+Re    = 6378100.  # Radius of earth (m)
+Atm_h = 8300.     # vertical extent of air layer (m)
 So    = 1367.     #solar constant (watts per square meter)
 Earth_emissivity = 0.6
 Sigma = 5.67e-8   # Boltzmann constant
 Tzero = 273.15    # absolute zero
 G     = 9.807
 R     = 8.3143    # universal gas constant
+M     = 0.0289644 # molar mass of dry air
 
 def find_le(a, x):
     'Find rightmost value less than or equal to x'
@@ -50,15 +51,28 @@ def find_le(a, x):
     raise ValueError
 
 def calculate_pressure_heights(pressure, temp):
-    M = 0.0289644  # molar mass of dry air
     return -math.log (pressure) * R * temp / (M * G)
 
+def coriolis_force(lat):
+    val = 2 * 7.292e-5 * math.sin(math.radians(lat))
+    return val
+
+def v_wind(lat, grad_x):
+    return grad_x * G / (coriolis_force(lat) * 1.11e5 * 1.85)
+
+def u_wind(lat, grad_y):
+    return -grad_y * G / (coriolis_force(lat) * 1.11e5* 1.85)
 
 class SimulationGrid:
     def __init__(self, lats, lons, heights, land_sea_mask):
-        self.lats = lats
+        self.lats = np.asarray(lats)
         self.reversed_lats = list(reversed(lats))
-        self.lons = lons
+        self.lons = np.asarray(lons)
+        self.U_wind = np.zeros(shape=(len(lats),len(lons)))
+        self.V_wind = np.zeros(shape=(len(lats), len(lons)))
+        self.air_temp = np.zeros(shape=(len(lats), len(lons)))
+        self.air_temp.fill(14 + Tzero)
+        self.mb500_height = np.zeros(shape=(len(lats), len(lons)))
         self.data = []
         for j,lon in enumerate(lons):
             sl = []
@@ -66,13 +80,9 @@ class SimulationGrid:
                 lsm = land_sea_mask[i, j]
                 sl.append ({
                     'height' : heights[i, j]
-                    , 'v-wind' : 0
-                    , 'u-wind' : 0
-                    , '500Mb-height' : 0
                     , 'humidity' : 0
-                    , 'evaporation-coeff' : 0.5 if lsm == 0 else 1.0
+                    , 'evaporation-coeff' : 0.5 if lsm == 1 else 1.0
                     , 'cloud-cover' : 0.        # 0..1
-                    , 'air-temperature' : 14 + Tzero #in Kelvin
                 })
             self.data.append(sl)
 
@@ -91,18 +101,19 @@ class SimulationGrid:
 
     def temperature_diff_per_minute(self, x, y, datetime):
         cell = self.data[x][y]
+        temp = self.air_temp[y][x]
         lat = self.lats[y]
         lon = self.lons[x]
         S_raw = solar_energy_influx(lat, lon, datetime)
         albedo = 0.3 + (0.6 * cell['cloud-cover'])      #reflection coeff, increases with cloud
         S_absorbed = (1 - albedo) * S_raw
-        E_emitted = 4.0 * Earth_emissivity * Sigma * math.pow(cell['air-temperature'],4)  / 4.45
+        E_emitted = 4.0 * Earth_emissivity * Sigma * math.pow(temp,4)  / 4.45
         val =  (S_absorbed - E_emitted) / (4 * 8.3 * 1.2 * 1000)
         return  2*val
 
     def get_cell_antipode(self, x, y):
         median_x = self.len_x() // 2
-        assert(median * 2 == self.len_x() , 'This will work just for even longitude size' )
+        #assert(median * 2 == self.len_x() , 'This will work just for even longitude size' )
         xa = median_x + x if x < median_x else x - median_x
         median_y = self.len_y() // 2
         xy_ = median_y - y  if median_y > y else y - median_y
@@ -110,16 +121,17 @@ class SimulationGrid:
         return self.data[xa][xy-1]
 
 
-def plot_heights(bmaps, grid, key):
-    Z = []
-    for i in range( grid.len_y() ):
-        Z.append([])
-        for j in range(grid.len_x()):
-            Z[i].append(grid.data[j][i][key])
-    plt.contourf(bmaps['global_x'],bmaps['global_y'], Z ,\
-                  extend='both',antialiasing=False)
+def plot_heights(bmaps, grid):
+    Z = grid.air_temp
+    U = grid.U_wind
+    V = grid.V_wind
+
+    plt.contourf(bmaps['global_x'],bmaps['global_y'], Z,\
+                 extend='both',antialiasing=False)
+    plt.hold(True)
+    plt.quiver(bmaps['global_x'],bmaps['global_y'],U, V)
     bmaps['global'].drawcoastlines()
-    plt.colorbar()
+#    plt.colorbar()
     plt.show()
 
 
@@ -179,15 +191,28 @@ def create_basemaps(lats, lons):
             }
 
 def integrate_step(grid, cur_time, step_minutes):
-    for x in range(grid.len_x()-1):
-        for y in range(grid.len_y()-1):
+    for x in range(grid.len_x()):
+        for y in range(grid.len_y()):
             cell = grid.data[x][y]
             temp_diff = grid.temperature_diff_per_minute(x,y,cur_time)  * step_minutes
 #            if temp_diff > 0:
-            cell['air-temperature'] += temp_diff
-            cell['500Mb-height'] = calculate_pressure_heights(0.5, cell['air-temperature'])
+            grid.mb500_height[y][x] = calculate_pressure_heights(0.5, grid.air_temp[y][x])
+            grid.air_temp[y][x] += temp_diff
             #cell_ant = grid.get_cell_antipode(x,y)
             #    cell_ant['air-temperature'] -= temp_diff
+
+    grad = np.gradient(grid.mb500_height)
+    print("0",grad[0].min(),grad[0].max())
+    print("1",grad[1].min(),grad[1].max())
+    for x in range(grid.len_x()):
+        for y in range(grid.len_y()):
+            cell = grid.data[x][y]
+            lat = grid.lats[y]
+            grid.V_wind[y][x] =  v_wind(lat,grad[1][y][x])
+            grid.U_wind[y][x] =  u_wind(lat,grad[0][y][x])
+    print("U",grid.U_wind.min(),grid.U_wind.max())
+    print("V",grid.V_wind.min(),grid.V_wind.max())
+    print("T",grid.air_temp.min(),grid.air_temp.max())
 
 
 
@@ -197,24 +222,19 @@ def integrate(bm, grid, step_minutes, num_days, start_date):
     cur_time = start_date
     x,y = grid.to_xy(52.53,13.35)
 
-    plt.figure(figsize=(10,10))
+    plt.figure() #figsize=(10,10))
     j = 0
     while cur_time < end_date:
         if j % 10 == 0:
-            plot_heights(bm, grid, 'air-temperature' )
+            plot_heights(bm, grid )
         j+=1
         cur_time = cur_time + delta
         #x,y = grid.to_xy(0,0)
         integrate_step(grid, cur_time, step_minutes)
         #cell = grid.data[x][y]
-        print ("{}:Temperature in Berlin: {}".format(cur_time,grid.data[x][y]['air-temperature'] - Tzero) )
-        total = 0
+        print ("{}:Temperature in Berlin: {}".format(cur_time,grid.air_temp[x][y] - Tzero) )
         i = 0
-        for v in grid.data:
-            for w in v:
-                total+=w['air-temperature']
-                i+=1
-        print("Ttoal:", total/i - Tzero )
+        print("Ttoal:", np.average(grid.air_temp) - Tzero )
 
 def run(args):
     logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s',
@@ -230,7 +250,7 @@ def run(args):
         hgt = hgt_file.variables['hgt'][0,:,:]
         land = land_file.variables['land'][0,:,:]
         grid = SimulationGrid(lat_list, lon_list, hgt, land)
-        integrate(bm, grid, 60, 10, datetime(2012,5,1))
+        integrate(bm, grid, 10, 10, datetime(2012,1,1))
 #        lon_list.append(360.)
 #        bm =  create_basemaps(lat_list, lon_list)
 #        hgt_tran = np.transpose(hgt)
@@ -248,6 +268,13 @@ def parse_args(argv):
                         action='store_true')
     return parser.parse_args(argv)
 
+def print_gradeint():
+    ar = np.array([[1,2,3],[4,5,6],[7,8,9]])
+    gr = np.gradient(ar)
+    print(ar)
+    print(gr[0])
+    print(gr[1])
+
 def main(argv=None):
     if argv is None:
         argv = sys.argv
@@ -255,6 +282,7 @@ def main(argv=None):
     if (not args):
         return 2
     run(args)
+    #print_gradeint()
 
 if __name__ == "__main__":
     sys.exit(main())
