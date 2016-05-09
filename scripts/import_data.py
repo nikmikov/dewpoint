@@ -39,6 +39,8 @@ So    = 1367.     #solar constant (watts per square meter)
 Earth_emissivity = 0.6
 Sigma = 5.67e-8   # Boltzmann constant
 Tzero = 273.15    # absolute zero
+G     = 9.807
+R     = 8.3143    # universal gas constant
 
 def find_le(a, x):
     'Find rightmost value less than or equal to x'
@@ -46,6 +48,11 @@ def find_le(a, x):
     if i:
         return a[i-1]
     raise ValueError
+
+def calculate_pressure_heights(pressure, temp):
+    M = 0.0289644  # molar mass of dry air
+    return -math.log (pressure) * R * temp / (M * G)
+
 
 class SimulationGrid:
     def __init__(self, lats, lons, heights, land_sea_mask):
@@ -61,7 +68,7 @@ class SimulationGrid:
                     'height' : heights[i, j]
                     , 'v-wind' : 0
                     , 'u-wind' : 0
-                    , 'pressure' : 0
+                    , '500Mb-height' : 0
                     , 'humidity' : 0
                     , 'evaporation-coeff' : 0.5 if lsm == 0 else 1.0
                     , 'cloud-cover' : 0.        # 0..1
@@ -103,18 +110,18 @@ class SimulationGrid:
         return self.data[xa][xy-1]
 
 
-def plot_heights(bmaps, grid):
-    plt.figure(figsize=(10,10))
+def plot_heights(bmaps, grid, key):
     Z = []
     for i in range( grid.len_y() ):
         Z.append([])
         for j in range(grid.len_x()):
-            Z[i].append(grid.data[i][j]['height'])
-    plt.contourf(bmaps['global_x'],bmaps['global_y'], Z ,
-                 np.linspace(0, 1500,200), extend='both',antialiasing=False)
+            Z[i].append(grid.data[j][i][key])
+    plt.contourf(bmaps['global_x'],bmaps['global_y'], Z ,\
+                  extend='both',antialiasing=False)
     bmaps['global'].drawcoastlines()
     plt.colorbar()
     plt.show()
+
 
 def get_or_download(e, force_reload=False):
     """ Get or download entry from datasets  """
@@ -147,7 +154,7 @@ def solar_energy_influx(lat, lon, dt):
     year_begin = midnight.replace(month=1, day=1)
     day_of_year = (dt - year_begin).days
     minutes_from_midnight = (dt - midnight).seconds / 60
-    """  Calculate solar energy influx at give coordinate and datetime """
+    """  Calculate solar energy influx at given coordinate and datetime """
     minutes_to_degrees = minutes_from_midnight * 360 / (24 * 60) + 180.0
     hour_angle = minutes_to_degrees - lon
     sa = solar_zenith_angle(lat, day_of_year, hour_angle)
@@ -178,22 +185,28 @@ def integrate_step(grid, cur_time, step_minutes):
             temp_diff = grid.temperature_diff_per_minute(x,y,cur_time)  * step_minutes
 #            if temp_diff > 0:
             cell['air-temperature'] += temp_diff
+            cell['500Mb-height'] = calculate_pressure_heights(0.5, cell['air-temperature'])
             #cell_ant = grid.get_cell_antipode(x,y)
             #    cell_ant['air-temperature'] -= temp_diff
 
 
 
-def integrate(grid, step_minutes, num_days, start_date):
+def integrate(bm, grid, step_minutes, num_days, start_date):
     delta = timedelta(minutes=step_minutes)
     end_date = start_date + timedelta(days=num_days)
     cur_time = start_date
     x,y = grid.to_xy(52.53,13.35)
+
+    plt.figure(figsize=(10,10))
+    j = 0
     while cur_time < end_date:
+        if j % 10 == 0:
+            plot_heights(bm, grid, 'air-temperature' )
+        j+=1
         cur_time = cur_time + delta
         #x,y = grid.to_xy(0,0)
         integrate_step(grid, cur_time, step_minutes)
         #cell = grid.data[x][y]
-        print(x,y)
         print ("{}:Temperature in Berlin: {}".format(cur_time,grid.data[x][y]['air-temperature'] - Tzero) )
         total = 0
         i = 0
@@ -213,10 +226,11 @@ def run(args):
          Dataset(datasets['land-sea-mask']['file-name'],'r') as land_file:
         lat_list = list(hgt_file.variables['lat'])
         lon_list = list(hgt_file.variables['lon'])
+        bm =  create_basemaps(lat_list, lon_list)
         hgt = hgt_file.variables['hgt'][0,:,:]
         land = land_file.variables['land'][0,:,:]
         grid = SimulationGrid(lat_list, lon_list, hgt, land)
-        integrate(grid, 60, 30, datetime(2012,5,1))
+        integrate(bm, grid, 60, 10, datetime(2012,5,1))
 #        lon_list.append(360.)
 #        bm =  create_basemaps(lat_list, lon_list)
 #        hgt_tran = np.transpose(hgt)
