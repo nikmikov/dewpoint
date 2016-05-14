@@ -9,11 +9,9 @@ import shutil
 import os.path
 import logging
 from netCDF4 import Dataset
-from mpl_toolkits.basemap import Basemap
-import matplotlib
 import numpy as np
-import matplotlib.pyplot as plt
 from datetime import datetime,timedelta
+import json
 
 datasets = {
     'surface-height': {
@@ -32,6 +30,9 @@ datasets = {
         , 'desc': '4-daily influx of solar radiation'
     }
 }
+
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
 
 Re    = 6378100.  # Radius of earth (m)
 Atm_h = 8300.     # vertical extent of air layer (m)
@@ -54,17 +55,18 @@ def calculate_pressure_heights(pressure, temp):
     return -math.log (pressure) * R * temp / (M * G)
 
 def coriolis_force(lat):
-    val = 2 * 7.292e-5 * math.sin(math.radians(lat))
-    if val >= 0.001 or val <= -0.001:
+    min_val = 0.4e-4
+    val = -2 * 7.292e-5 * math.sin(math.radians(lat))
+    if val >= min_val or val <= -min_val:
         return val
     else:
-        return 0.001 if val > 0 else -0.001
+        return min_val if val > 0 else -min_val
 
 def v_wind(lat, grad_x):
-    return grad_x * G / (coriolis_force(lat) * 1.11e5 * 1.85)
+    return grad_x * G / (coriolis_force(lat) * 1.11e5 )
 
 def u_wind(lat, grad_y):
-    return -grad_y * G / (coriolis_force(lat) * 1.11e5 * 1.85)
+    return -grad_y * G / (coriolis_force(lat) * 1.11e5 )
 
 class SimulationGrid:
     def __init__(self, lats, lons, heights, land_sea_mask):
@@ -106,7 +108,7 @@ class SimulationGrid:
         return np.clip(x-1, 0, self.len_x()) , np.clip(y-1, 0, self.len_y() - 1)
 
 
-    def temperature_diff_per_minute(self, x, y, datetime):
+    def temperature_diff_per_minute(self, x, y, datetime, print_val=False):
         cell = self.data[x][y]
         temp = self.air_temp[y][x]
         lat = self.lats[y]
@@ -116,7 +118,9 @@ class SimulationGrid:
         S_absorbed = (1 - albedo) * S_raw
         E_emitted = 4.0 * Earth_emissivity * Sigma * math.pow(temp,4)  / 4.79
         val =  (S_absorbed ) / (4 * 8.3 * 1.2 * 1000)
-        return 4*val
+        if print_val:
+            eprint("T:", S_absorbed)
+        return 8*val
 
     def get_cell_antipode(self, x, y):
         median_x = self.len_x() // 2
@@ -128,38 +132,39 @@ class SimulationGrid:
         return self.data[xa][xy-1]
 
 
-    def get_neighbour_cell_x(self, x, dir_x):
-        if dir_x < 0:
+    def get_source_cell_x(self, x, dir_x):
+        if dir_x > 0:
             return x - 1 if x > 0 else  self.len_x() - 1 # left
         elif dir_x == 0:
             return x
-        else:
+        else: # dir_x < 0
             return x + 1 if x < self.len_x() - 1 else 0  #right
 
-    def get_neighbour_cell_y(self, y, dir_y):
-        if dir_y < 0:
+    def get_source_cell_y(self, y, dir_y):
+        if dir_y > 0:
             return y - 1 if y > 0 else y #up
         elif dir_y == 0:
             return y
         else:
             return y + 1 if y < self.len_y() - 1 else y  #down
 
+def update_plot(grid):
+    eprint("pllot update")
+    o = {}
+    o['frame'] = 1
+    o['temp'] = grid.air_temp.flatten().tolist()
+    o['uwind'] = grid.U_wind.flatten().tolist()
+    o['vwind'] = grid.V_wind.flatten().tolist()
+    json.dump(o, sys.stdout)
+    sys.stdout.write('\n')
 
-def plot_heights(bmaps, grid):
-    Z = grid.air_temp
-    U = grid.U_wind
-    V = grid.V_wind
-
-    plt.contourf(bmaps['global_x'],bmaps['global_y'], Z,\
-                 extend='both',antialiasing=False)
-    plt.colorbar()
-    plt.hold(True)
-    plt.quiver(bmaps['global_x'],bmaps['global_y'],U, V)
-    x,y_ = grid.to_xy(-22,129)
-    bmaps['global'].drawcoastlines()
-
-    plt.show()
-
+def plor_print_header(lats, lons):
+    o = {}
+    o['title'] = "Temp and winds plot"
+    o['lats'] = lats.tolist()
+    o['lons'] = lons.tolist()
+    json.dump(o, sys.stdout)
+    sys.stdout.write('\n')
 
 def get_or_download(e, force_reload=False):
     """ Get or download entry from datasets  """
@@ -200,21 +205,43 @@ def solar_energy_influx(lat, lon, dt):
     return So * math.cos(sa) if cos_sa >0 else 0
 
 
-def create_basemaps(lats, lons):
-    """ Setup global basemaps for eventual plotting """
-    print("Creating basemaps for plotting")
+def advection_temp_diff(u, v, T0, Txs, Tys, L, dt):
+    """
+    calculate temperature increase due to advection
+    u   - wind speed by x
+    v   - wind speed by y
+    T0  - initial cell temp
+    Txs - x-source cell temperature
+    Tys - y-source cell temperature
+    L   - length of cell side in meters
+    dt  - time in seconds
+    """
+    if u == 0 or v == 0:
+        return 0
+    dx = abs(u) * dt
+    dy = abs(v) * dt
+    S = L * L
+    A_0 = (L - dy) * (L - dx) / S
+    T_0 = A_0 * T0
+    A_y = (L - dx) * dy / S
+    T_y = A_y * Tys
+    A_x = (L - dy) * dx / S
+    T_x = A_x * Txs
+    cx = dx / (dx + dy)
+    cy = 1 - cx
+    Tsxy = Txs * cx + Tys * cy
+    A_xy = 1 - (A_0 + A_y + A_x)
+    T_xy = A_xy * Tsxy
+    T1 = T_0 + T_y + T_x + T_xy
+    if abs(T1 - T0) > 10 :
+        S = L*L
+        eprint("X:", (L - dx) * dy/ S, Txs)
+        eprint("Y:", (L - dy) * dx/ S, Tys)
+        eprint("0:", (L - dy) * (L - dx)/ S, T0)
+        eprint("XY:", dx * dt/ S, Tsxy)
+        eprint(T1 - T0, u, v, "T", T0-Tzero, Txs-Tzero, Tys-Tzero, Tsxy-Tzero, "C", A_0, A_x, A_y, A_xy)
+    return T1 - T0
 
-    long, latg = np.meshgrid(lons,lats)
-
-    # Set up a global map
-    bmap_globe = Basemap(projection='cea',llcrnrlat=-70, urcrnrlat=70,\
-                         llcrnrlon=0,urcrnrlon=360,lat_ts=20,resolution='c')
-    xg,yg = bmap_globe(long,latg)
-
-    return {'global' : bmap_globe,
-            'global_x' : xg,
-            'global_y' : yg,
-            }
 
 def integrate_step(grid, cur_time, step_minutes):
     temp_diff = np.zeros(shape=(grid.len_y(), grid.len_x()))
@@ -223,47 +250,28 @@ def integrate_step(grid, cur_time, step_minutes):
     for x in range(grid.len_x()):
         for y in range(grid.len_y()):
             temp_diff[y][x] += grid.temperature_diff_per_minute(x,y,cur_time)  * step_minutes
-            """
-            u = grid.U_wind[y][x]
-            cell_u = grid.get_neighbour_cell_x(x, u)
-            dist_u = abs(u * step_minutes * 60)
-            cell_u_temp = grid.air_temp[y][cell_u]
-            diff_u = 1 - (grid.cell_size() - dist_u)/ grid.cell_size()\
-                     if grid.cell_size()  >  dist_u else 1
-            td = cell_u_temp - (diff_u * grid.air_temp[y][x] + (1-diff_u)*cell_u_temp )
-            cell_u_wind = grid.U_wind[y][cell_u]
-            tu = cell_u_wind - (diff_u * u + (1-diff_u)*cell_u_wind )
-           # temp_diff[y][cell_u] += td
-            #temp_diff[y][x] -= td
-            u_wind_diff[y][cell_u] += tu
-            u_wind_diff[y][x] -= tu
-            #v-wind
-            v = grid.V_wind[y][x]
-            cell_v = grid.get_neighbour_cell_y(y, v)
-            dist_v = abs(v * step_minutes * 60)
-            cell_v_temp = grid.air_temp[cell_v][x]
-            diff_v = 1 - (grid.cell_size() - dist_v)/ grid.cell_size()\
-                     if grid.cell_size()  > dist_v else 1
-            td = cell_v_temp - (diff_v * grid.air_temp[y][x] + (1-diff_v)*cell_v_temp )
-            cell_v_wind = grid.V_wind[cell_v][x]
-            tv = cell_v_wind - (diff_v * v + (1-diff_v)*cell_v_wind )
-            #temp_diff[cell_v][x] += td
-            #temp_diff[y][x] -= td
-            v_wind_diff[cell_v][x] += tv
-            v_wind_diff[y][x] -= tv
-            if abs(tv) > 20:
-                print(x,y,td,tv,diff_v)
-            """
+            x_src = grid.get_source_cell_x(x, grid.U_wind[y][x])
+            y_src = grid.get_source_cell_y(y, grid.V_wind[y][x])
+            dt = advection_temp_diff(grid.U_wind[y][x],
+                                     grid.V_wind[y][x],
+                                     grid.air_temp[y][x],
+                                     grid.air_temp[y][x_src],
+                                     grid.air_temp[y_src][x],
+                                     grid.cell_size(),
+                                     step_minutes * 60)
+            temp_diff[y][x] += dt
+
             grid.mb500_height[y][x] = calculate_pressure_heights(0.5, grid.air_temp[y][x])
             #cell_ant = grid.get_cell_antipode(x,y)
             #    cell_ant['air-temperature'] -= temp_diff
     total_absorbed = temp_diff.sum()
-    temp_a = grid.air_temp * grid.air_temp * grid.air_temp * grid.air_temp
+    temp_a = grid.air_temp * grid.air_temp
+    temp_a = temp_a * temp_a * temp_a * temp_a
     sum_b = temp_a.sum()
     temp_a /= sum_b
     emitted_per_cell = temp_a * total_absorbed
 
-    print(total_absorbed, sum_b)
+    eprint(total_absorbed, sum_b)
     temp_diff -= emitted_per_cell
 
     grid.air_temp+=temp_diff
@@ -272,36 +280,41 @@ def integrate_step(grid, cur_time, step_minutes):
         for y in range(grid.len_y()):
             cell = grid.data[x][y]
             lat = grid.lats[y]
-            v_wind_diff[y][x] = v_wind(lat,grad[1][y][x])
-            u_wind_diff[y][x] = u_wind(lat,grad[0][y][x])
+            v_wind_diff[y][x] = v_wind(lat,grad[1][y][x]/1.85)
+            u_wind_diff[y][x] = u_wind(lat,grad[0][y][x]/1.85)
 
     grid.U_wind = u_wind_diff
     grid.V_wind = v_wind_diff
-    print("U",grid.U_wind.min(),grid.U_wind.max())
-    print("V",grid.V_wind.min(),grid.V_wind.max())
-    print("T",grid.air_temp.min(),grid.air_temp.max())
+    eprint("G0",grad[0].min(),grad[0].max())
+    eprint("G1",grad[1].min(),grad[1].max())
+    eprint("U",grid.U_wind.min(),grid.U_wind.max())
+    eprint("V",grid.V_wind.min(),grid.V_wind.max())
+    eprint("T",grid.air_temp.min() - Tzero ,grid.air_temp.max() - Tzero)
 
 
 
-def integrate(bm, grid, step_minutes, num_days, start_date):
+def integrate(grid, step_minutes, num_days, start_date):
     delta = timedelta(minutes=step_minutes)
     end_date = start_date + timedelta(days=num_days)
     cur_time = start_date
     x,y = grid.to_xy(52.53,13.35)
 
-    plt.figure() #figsize=(10,10))
     j = 0
+    plor_print_header(grid.lats, grid.lons)
     while cur_time < end_date:
-        if j % 30 == 1:
-            plot_heights(bm, grid )
+        if j % 2 == 1:
+            update_plot(grid )
         j+=1
         cur_time = cur_time + delta
         #x,y = grid.to_xy(0,0)
         integrate_step(grid, cur_time, step_minutes)
         #cell = grid.data[x][y]
-        print ("{}:Temperature in Berlin: {}".format(cur_time,grid.air_temp[x][y] - Tzero) )
+        eprint ("{}:Temperature in Berlin: {}, absorbed solar EL {}".format(
+            cur_time,
+            grid.air_temp[x][y] - Tzero,
+            grid.temperature_diff_per_minute(x,y,cur_time, True)))
         i = 0
-        print("Ttoal:", np.average(grid.air_temp) - Tzero )
+        eprint("Ttoal:", np.average(grid.air_temp) - Tzero )
 
 def run(args):
     logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s',
@@ -313,19 +326,10 @@ def run(args):
          Dataset(datasets['land-sea-mask']['file-name'],'r') as land_file:
         lat_list = list(hgt_file.variables['lat'])
         lon_list = list(hgt_file.variables['lon'])
-        bm =  create_basemaps(lat_list, lon_list)
         hgt = hgt_file.variables['hgt'][0,:,:]
         land = land_file.variables['land'][0,:,:]
         grid = SimulationGrid(lat_list, lon_list, hgt, land)
-        integrate(bm, grid, 15, 10, datetime(2012,4,1))
-#        lon_list.append(360.)
-#        bm =  create_basemaps(lat_list, lon_list)
-#        hgt_tran = np.transpose(hgt)
-        # Duplicate the last longitude column for periodicity
-#        plot_heights(bm, grid )
-        #time_ar = [solar_energy_influx(52.53, 13.38, x, 30*6) for x in range(0, 24 * 360) ]
-        #print(sum(time_ar) / (24*60))
-
+        integrate(grid, 6, 30, datetime(2012,4,1))
 
 def parse_args(argv):
     parser = argparse.ArgumentParser('Import initial data for dewpoint weather simulator')
@@ -338,9 +342,9 @@ def parse_args(argv):
 def print_gradeint():
     ar = np.array([[0,0,0],[1,1,1],[0,0,0]])
     gr = np.gradient(ar)
-    print(ar)
-    print(gr[0])
-    print(gr[1])
+    eprint(ar)
+    eprint(gr[0])
+    eprint(gr[1])
 
 def main(argv=None):
     if argv is None:
