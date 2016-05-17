@@ -32,8 +32,10 @@ HEADER:
 FRAME:
 
 {
-    "frame:" "<DATETIME>",
-    ""
+    "frame" : "<DATETIME>",
+    "temp"  : [t1,..],
+    "uwind"  : [u1,..],
+    "vwind"  : [v1,..]
 }
 
 
@@ -97,8 +99,8 @@ def main(argv=None):
         ax.cla()
         bmaps['global'].drawcoastlines()
         cont = ax.contourf(xi, yi, Z,  extend="both",antialiasing=True, levels = lev)
-#        ax.hold(True)
-#        ax.quiver(xi,yi,U, V)
+        ax.hold(True)
+        ax.quiver(xi,yi,U, V)
         print("plotted")
 
 
