@@ -48,6 +48,7 @@ gasConst = 8.3143
 
 -- | return pressure at given altitude in Pa
 altitudePressure :: Double -> Double -> Double
+altitudePressure _ 0 = 0
 altitudePressure alt temp = pressureSeaLevel * exp ( -gravConst * molarMassAir * alt / (gasConst * temp) )
 
 -- | pressure of water component in atmosphere
