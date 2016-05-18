@@ -4,7 +4,9 @@ module DewPoint.Grid(Grid(..), CellBox(..), Ix,
                      gridSizeXY,
                      gridGetLocationIx,
                      gridGetCellBBox,
-                     ixToXY
+                     gridCellLengthMeters,
+                     gridSrcCellX, gridSrcCellY,
+                     ixToXY, xyToIx
 ) where
 
 import DewPoint.Geo
@@ -107,6 +109,36 @@ gridGetCellBBox grid (_ :. x :. y) =
     cellBoxTopLeft = (gridGetLatAt grid y, gridGetLonAt grid x)
   , cellBoxBottomRight = ( gridGetLatAt grid (succ y), gridGetLonAt grid (succ x))
   }
+
+-- | aproximate length of cell side in meters (assuming cell is a square)
+gridCellLengthMeters :: Grid -> Double
+gridCellLengthMeters g = let (numX, numY) = gridSizeXY g
+                             cellArea = earthSurfaceArea / fromIntegral (numX * numY)
+                         in sqrt(cellArea)
+
+xyToIx :: Int -> Int -> Ix
+xyToIx x y = (R.Z :. x :. y)
+
+gridMaxX :: Grid -> Int
+gridMaxX = (-) 1 . fst . gridSizeXY
+
+gridMaxY :: Grid -> Int
+gridMaxY = (-) 1 . snd . gridSizeXY
+
+gridSrcCellX :: Grid -> Ix -> Double -> Ix
+gridSrcCellX g (R.Z :. x :. y) u
+  | u > 0  = if x > 0 then xyToIx (x - 1) y else xyToIx maxX y
+  | u < 0  = if x >= maxX then xyToIx 0 y else xyToIx (x + 1) y
+  where maxX = gridMaxX g
+gridSrcCellX _ ix _ = ix
+
+gridSrcCellY :: Grid -> Ix -> Double -> Ix
+gridSrcCellY g ix@(R.Z :. x :. y) v
+  | v > 0  = if y > 0 then  xyToIx x (y - 1) else ix
+  | v < 0  = if y < maxY then  xyToIx x (y + 1) else ix
+  where maxY = gridMaxY g
+gridSrcCellY _ ix _ = ix
+
 
 ----------------------------------------------------------------------------------------------------------------
 -- non exported functions

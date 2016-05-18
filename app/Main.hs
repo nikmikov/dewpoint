@@ -34,8 +34,8 @@ stationString g t st = concat $ intersperse "|"
   , show t
   , "Rain"
   , show $ Ph.toCelsius temp
-  , show $ ps
-  , show $ rh
+  , show ps
+  , show rh
   ]
   where ix = gridCell st
         (lat, lon) = latLon st
@@ -53,7 +53,8 @@ validateOpt o = if (Opt.outputType o) == Opt.Text && null (Opt.stationListIATACo
 
 integrate' :: Opt.ProgramOpt -> G.Grid -> UTCTime -> DiffTime -> IO (G.Grid, UTCTime)
 integrate' _ g t dt = do (g', t') <- Sim.integrate g t dt
-                         print t
+                         let st = MeteoStation "SYD" (-33.86,151.21) (G.xyToIx 20 20)
+                         print $ stationString g t st
                          return $! (g', t')
 
 run :: Opt.ProgramOpt -> IO()

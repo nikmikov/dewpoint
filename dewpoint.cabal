@@ -29,7 +29,7 @@ executable dewpoint-exe
   hs-source-dirs:      app
   main-is:             Main.hs
   other-modules:       CommandLineOptions
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -Wall -Werror
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -Wall -Werror -funbox-strict-fields
   build-depends:       base
                      , dewpoint
                      , optparse-applicative

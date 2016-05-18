@@ -13,6 +13,8 @@ import numpy as np
 from datetime import datetime,timedelta
 import json
 
+# http://www.weathergraphics.com/identifiers/master-location-identifier-database-20130801.csv
+
 datasets = {
     'surface-height': {
         'url': 'ftp://ftp.cdc.noaa.gov/Datasets/ncep.reanalysis/surface_gauss/hgt.sfc.gauss.nc'

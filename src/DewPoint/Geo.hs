@@ -1,4 +1,5 @@
-module DewPoint.Geo(Lat(..), Lon(..), toLat, toLon, fromLat, fromLon, toLatLon) where
+module DewPoint.Geo(Lat(..), Lon(..), toLat, toLon, fromLat, fromLon, toLatLon,
+                    earthRadius, earthSurfaceArea) where
 
 data Lat = Lat Double deriving (Ord, Eq, Show)
 data Lon = Lon Double deriving (Ord, Eq, Show)
@@ -30,3 +31,10 @@ toLon val = clamp (Lon val)
 
 toLatLon :: Double -> Double -> (Lat, Lon)
 toLatLon lat lon = (toLat lat, toLon lon)
+
+-- | radius of earth (m)
+earthRadius :: Double
+earthRadius = 6378100.0
+
+earthSurfaceArea :: Double
+earthSurfaceArea = 4 * pi * earthSurfaceArea**2
