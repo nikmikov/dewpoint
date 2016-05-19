@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
 module DewPoint.Grid(Grid(..), CellBox(..), Ix,
                      gridCreate, gridCreateFixed,
                      gridSizeXY,
@@ -18,14 +17,15 @@ import qualified Data.Array.Repa.Repr.Vector as R
 
 {-
 Grid over earth surface represenation
-________ X
-|_|_|_|
-|_|_|_|
-|
+
 Y
+|______
+|_|_|_|
+|_|_|_|
+|_|_|_|_ X
 
 X axis directed from west to east
-Y axis directed from north to south
+Y axis directed from south to north
 
 for each cell C(x,y) with cell box (lat1, lon1, lat2, lon2) and point p(lat, lon)
 p is inside the cell if p.lat >= lat1 && p.lat < lat2 && p.lon >= lon1 && p.lon < lon2
@@ -50,6 +50,7 @@ data Grid = Grid {
   , gridAirTemp :: !DUArray
   , gridUWind :: !DUArray
   , gridVWind :: !DUArray
+  , gridCloudCover :: !DUArray
   , gridWaterDensity :: !DUArray -- ^ density of water vapor in atmosphere
   } deriving (Show)
 
@@ -70,6 +71,7 @@ gridCreate lats lons =
   , gridAirTemp       = dzeros
   , gridUWind         = dzeros
   , gridVWind         = dzeros
+  , gridCloudCover    = dzeros
   , gridWaterDensity  = dzeros
   }
   where lats' = S.sort $ S.fromList lats

@@ -27,7 +27,7 @@ fromLon :: Lon -> Double
 fromLon (Lon v) = v
 
 toLon :: Double -> Lon
-toLon val = clamp (Lon val)
+toLon val = if val < 0 then toLon (val + 360.0)  else clamp (Lon val)
 
 toLatLon :: Double -> Double -> (Lat, Lon)
 toLatLon lat lon = (toLat lat, toLon lon)
@@ -37,4 +37,4 @@ earthRadius :: Double
 earthRadius = 6378100.0
 
 earthSurfaceArea :: Double
-earthSurfaceArea = 4 * pi * earthSurfaceArea**2
+earthSurfaceArea = 4 * pi * earthRadius**2

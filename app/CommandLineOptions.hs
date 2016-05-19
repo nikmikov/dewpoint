@@ -20,7 +20,9 @@ data ProgramOpt = ProgramOpt {
   , startDate  :: Day
   , numDays    :: Integer
   , interval   :: Integer
+  , outputInterval :: Integer
   , outputType :: OutputType
+  , dataDir    :: String
   } deriving (Show)
 
 
@@ -44,14 +46,33 @@ parseNumDays = option auto
               <> help "Number of days to run"
               )
 
+parseDataDir :: Parser String
+parseDataDir = option auto
+               ( long "data-dir"
+              <> value "data"
+              <> showDefault
+              <> metavar "DATA-DIR"
+              <> help "Directory with input data"
+              )
+
 parseStepInterval :: Parser Integer
 parseStepInterval = option auto
                ( short 'i'
               <> long "interval"
-              <> metavar "INTERVAL"
+              <> metavar "INTEGRATION-INTERVAL"
               <> value 10
               <> showDefault
               <> help "Simulation step interval in minutes"
+              )
+
+parseOutputInterval :: Parser Integer
+parseOutputInterval = option auto
+               ( short 'p'
+              <> long "print-interval"
+              <> metavar "PRINT-INTERVAL"
+              <> value 180
+              <> showDefault
+              <> help "Output interval in minutes, should be multiple of integration interval"
               )
 
 
@@ -86,4 +107,6 @@ parseOptions = ProgramOpt
                <*> parseStartDate
                <*> parseNumDays
                <*> parseStepInterval
+               <*> parseOutputInterval
                <*> parseOutputType
+               <*> parseDataDir
