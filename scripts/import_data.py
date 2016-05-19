@@ -12,10 +12,16 @@ from netCDF4 import Dataset
 import numpy as np
 from datetime import datetime,timedelta
 import json
+import csv
 
 # http://www.weathergraphics.com/identifiers/master-location-identifier-database-20130801.csv
 
 datasets = {
+    'stations': {
+        'url': 'http://www.weathergraphics.com/identifiers/master-location-identifier-database-20130801.csv'
+        , 'file-name': 'stations-database-input.csv'
+        , 'desc': 'Database of meteostations with coordinates'
+    },
     'surface-height': {
         'url': 'ftp://ftp.cdc.noaa.gov/Datasets/ncep.reanalysis/surface_gauss/hgt.sfc.gauss.nc'
         , 'file-name': 'hgt.sfc.gauss.nc'
@@ -438,13 +444,42 @@ def parse_args(argv):
     parser = argparse.ArgumentParser('Import initial data for dewpoint weather simulator')
     parser.add_argument("-d","--debug", help="print debug statements", action='store_true')
     parser.add_argument("-p","--plot", help="output plot data to stdout", action='store_true')
-    parser.add_argument("--force-reload",
+    parser.add_argument("--force-reload", default=False,
                         help="force reload, ignore cached files",
                         action='store_true')
+    parser.add_argument("output_dir", help="output directory", nargs=1)
     return parser.parse_args(argv)
 
-def print_gradeint():
-    ar = np.array([[0,0,0],[1,1,1],[0,0,0]])
+def import_stations(data_dir, force_reload):
+    stations_input = get_or_download(datasets['stations'], force_reload)
+    d = os.path.abspath(data_dir)
+    if not os.path.exists(d):
+        os.makedirs(d)
+    output_name = os.path.join(d, 'stations.csv')
+    with open(stations_input, newline='', encoding='windows-1252') as csvinput,\
+         open(output_name, 'w', newline='') as csvoutput:
+        reader = csv.reader(csvinput, delimiter=',',skipinitialspace=True )
+        fieldnames = ['iata', 'country', 'city', 'station_name', 'lat', 'lon']
+        writer = csv.DictWriter(csvoutput, delimiter=';', fieldnames=fieldnames)
+        uniq_set = set("")
+        for row in reader:
+            o = {
+                'iata' : row[13]
+                , 'country': row[2]
+                , 'city' : row[5]
+                , 'station_name' : row[6]
+                , 'lat'  : row[29]
+                , 'lon'  : row[30]
+            }
+            if o['iata'] not in uniq_set:
+                uniq_set.add(o['iata'])
+                writer.writerow(o)
+
+
+
+
+def print_gradient():
+    ar = np.array([[0,0,0],[1,100,-1],[0,0,0]])
     gr = np.gradient(ar)
     eprint(ar)
     eprint(gr[0])
@@ -456,8 +491,9 @@ def main(argv=None):
     args = parse_args(argv[1:])
     if (not args):
         return 2
-    run(args)
-#    print_gradeint()
+#    run(args)
+    import_stations(args.output_dir[0], args.force_reload)
+    #print_gradient()
 
 if __name__ == "__main__":
     sys.exit(main())
