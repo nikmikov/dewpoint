@@ -20,7 +20,6 @@ library
                      , DewPoint.Simulation
   build-depends:       base >= 4.7 && < 5
                      , repa >= 3.2
-                     , hmatrix
                      , containers
                      , time
   ghc-options:         -Wall -fno-ignore-asserts
@@ -47,6 +46,7 @@ test-suite dewpoint-test
   main-is:             Spec.hs
   build-depends:       base
                      , dewpoint
+                     , repa
                      , tasty
                      , tasty-hunit
                      , tasty-smallcheck

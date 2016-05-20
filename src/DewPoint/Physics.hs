@@ -55,10 +55,15 @@ molarMassWater = 0.01801528
 gasConst :: Double
 gasConst = 8.3143
 
+-- | given pressure in atmospheres calculate geopotential height
+calculatePressureHeight :: Double -> Double -> Double
+calculatePressureHeight ps temp = -(log ps) * gasConst * temp / (molarMassAir * gravConst)
+
 -- | return pressure at given altitude in Pa
 altitudePressure :: Double -> Double -> Double
 altitudePressure _ 0 = 0
-altitudePressure alt temp = pressureSeaLevel * exp ( -gravConst * molarMassAir * alt / (gasConst * temp) )
+altitudePressure alt temp = pressureSeaLevel *
+                            exp ( -gravConst * molarMassAir * alt / (gasConst * temp) )
 
 -- | pressure of water component in atmosphere
 partialAtmosphericWaterPressure :: Double -- ^ water denisty
@@ -82,6 +87,33 @@ relativeHumidity :: Double -- ^ water density
                  -> Double -- ^ surface pressure
                  -> Double
 relativeHumidity wd temp ps = partialAtmosphericWaterPressure wd temp / equilibriumWaterPressure ps temp
+
+
+-- | Calculate coriolis force at the given latitude
+coriolisForce :: Lat -> Double
+coriolisForce (Lat lat) =  -2 * 7.292e-5 * sin(toRad lat)
+
+-- | Return coriolis force at given latitude
+--   but not less than 4e-5 in northern hemisphere and -4e-5 southern hemisphere
+coriolisForce' :: Lat -> Double
+coriolisForce' = clamp' 4e-5 . coriolisForce
+    where clamp' m' 0 = m'
+          clamp' m' v = (max m' (abs v) )  * (signum v)
+
+-- | Calculates geostrophic zonal wind (west-east) ( U-wind )
+--   given latitude,
+--         gradient of pressure at 500Mb heights by Y axis(Pa/meters)
+--         gradient step (meters)
+--   return U-wind in m/sec
+geostrophicZonalWind :: Lat -> Double -> Double
+geostrophicZonalWind lat gradY = (- gradY) * gravConst / (coriolisForce' lat)
+
+-- | Calculates geostrophic meridional wind (north-south) ( V-wind )
+--   given latitude,
+--         gradient of pressure at 500Mb heights by X axis(Pa/meters)
+--   return V-wind in m/sec
+geostrophicMeridionalWind :: Lat -> Double -> Double
+geostrophicMeridionalWind lat gradX = gradX * gravConst / (coriolisForce' lat)
 
 
 -- | extract seconds since midnight from UTCTime and convert it to Double
