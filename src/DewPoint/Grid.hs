@@ -5,7 +5,9 @@ module DewPoint.Grid(Grid(..), CellBox(..), Ix,
                      gridGetCellBBox,
                      gridCellLengthMeters,
                      gridSrcCellX, gridSrcCellY,
-                     ixToXY, xyToIx
+                     ixToXY,
+                     gridMaxX, gridMaxY,
+                     gridCellRight, gridCellLeft, gridCellUp, gridCellDown
 ) where
 
 import DewPoint.Geo
@@ -14,6 +16,8 @@ import qualified Data.Array.Repa as R
 import Data.Sequence(Seq)
 import qualified Data.Sequence as S
 import qualified Data.Array.Repa.Repr.Vector as R
+
+--import Debug.Trace
 
 {-
 Grid over earth surface represenation
@@ -118,39 +122,50 @@ gridCellLengthMeters g = let (numX, numY) = gridSizeXY g
                              cellArea = earthSurfaceArea / fromIntegral (numX * numY)
                          in sqrt(cellArea)
 
-xyToIx :: Int -> Int -> Ix
-xyToIx x y = (R.Z :. x :. y)
-
 gridMaxX :: Grid -> Int
-gridMaxX = (-) 1 . fst . gridSizeXY
+gridMaxX = flip (-) 1 . fst . gridSizeXY
 
 gridMaxY :: Grid -> Int
-gridMaxY = (-) 1 . snd . gridSizeXY
+gridMaxY = flip (-) 1 . snd . gridSizeXY
 
 gridSrcCellX :: Grid -> Ix -> Double -> Ix
-gridSrcCellX g (R.Z :. x :. y) u
-  | u > 0  = if x > 0 then xyToIx (x - 1) y else xyToIx maxX y
-  | u < 0  = if x >= maxX then xyToIx 0 y else xyToIx (x + 1) y
-  where maxX = gridMaxX g
+gridSrcCellX g ix u
+  | u > 0  = gridCellLeft g ix
+  | u < 0  = gridCellRight g ix
 gridSrcCellX _ ix _ = ix
 
 gridSrcCellY :: Grid -> Ix -> Double -> Ix
-gridSrcCellY g ix@(R.Z :. x :. y) v
-  | v > 0  = if y > 0 then  xyToIx x (y - 1) else ix
-  | v < 0  = if y < maxY then  xyToIx x (y + 1) else ix
-  where maxY = gridMaxY g
+gridSrcCellY g ix v
+  | v > 0  = gridCellDown g ix
+  | v < 0  = gridCellUp g ix
 gridSrcCellY _ ix _ = ix
 
+-- | get cell on the right from the given index
+gridCellRight :: Grid -> Ix -> Ix
+gridCellRight g (R.Z :. x :. y) = if x == (gridMaxX g) then R.ix2 0 y else R.ix2 (x + 1) y
 
-----------------------------------------------------------------------------------------------------------------
+-- | get cell on the left from the given index
+gridCellLeft :: Grid -> Ix -> Ix
+gridCellLeft g (R.Z :. x :. y) = if x == 0 then R.ix2 (gridMaxX g) y else R.ix2 (x - 1) y
+
+-- | get cell on the top from the given index (positive direction Y axis)
+gridCellUp :: Grid -> Ix -> Ix
+gridCellUp g ix@(R.Z :. x :. y) = if y == (gridMaxY g) then ix else R.ix2 x (y + 1)
+
+-- | get cell on the bottom from the given index (negative direction Y axis)
+gridCellDown :: Grid -> Ix -> Ix
+gridCellDown _ ix@(R.Z :. x :. y) = if y == 0 then ix else R.ix2 x (y - 1)
+
+-------------------------------------------------------------------------------------------
 -- non exported functions
 
 computeCellCenter :: Seq Lat -> Seq Lon -> Ix -> (Lat, Lon)
-computeCellCenter lats lons ix = let (x, y) = ixToXY ix
-                                     (Lat lat1, Lat lat2) = ( S.index lats y, S.index lats (y + 1) )
-                                     (Lon lon1, Lon lon2) = ( S.index lons x, S.index lons (x + 1) )
-                                     middle v1 v2 = v1 + (v2 - v1) / 2
-                                 in toLatLon (middle lat1 lat2) (middle lon1 lon2)
+computeCellCenter lats lons ix =
+    let (x, y) = ixToXY ix
+        (Lat lat1, Lat lat2) = ( S.index lats y, S.index lats (y + 1) )
+        (Lon lon1, Lon lon2) = ( S.index lons x, S.index lons (x + 1) )
+        middle v1 v2 = v1 + (v2 - v1) / 2
+    in toLatLon (middle lat1 lat2) (middle lon1 lon2)
 
 
 gridGetLonAt :: Grid -> Int -> Lon
