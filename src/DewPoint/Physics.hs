@@ -7,74 +7,74 @@ import DewPoint.Geo
 import Debug.Trace
 
 -- | aboslute zero in K
-tZero :: Double
+tZero :: Floating a => a
 tZero = -273.15
 
 -- | convert Kelvin to Celsius
-toCelsius :: Double -> Double
+toCelsius :: Floating a => a -> a
 toCelsius = (+) tZero
 
 -- | Celsius to Kelvin
-toKelvin :: Double -> Double
+toKelvin :: Floating a => a -> a
 toKelvin v = v - tZero
 
 -- | Average surface temperature
-avgSurfaceTemp :: Double
+avgSurfaceTemp :: Floating a => a
 avgSurfaceTemp = toKelvin 14
 
 -- | degrees to radians
-toRad :: Double -> Double
+toRad :: Floating a => a -> a
 toRad a = pi * a / 180.0
 
-toDegrees :: Double -> Double
+toDegrees :: Floating a => a -> a
 toDegrees r = 180.0 * r / pi
 
-solarConst :: Double
+solarConst :: Floating a => a
 solarConst = 1367 -- W/m^2
 
-secondsInADay :: Double
+secondsInADay :: Floating a => a
 secondsInADay = 24*60*60
 
 -- | sea level pressure
-pressureSeaLevel :: Double
+pressureSeaLevel :: Floating a => a
 pressureSeaLevel = 101325
 
 -- | gravitational const
-gravConst :: Double
+gravConst :: Floating a => a
 gravConst = 9.807
 
 -- | molar mass of dry air
-molarMassAir :: Double
+molarMassAir :: Floating a => a
 molarMassAir = 0.0289644
 
 -- | molar mass of dry air
-molarMassWater :: Double
+molarMassWater :: Floating a => a
 molarMassWater = 0.01801528
 
 -- | universal gas constant
-gasConst :: Double
+gasConst :: Floating a => a
 gasConst = 8.3143
 
 -- | given pressure in atmospheres calculate geopotential height
-calculatePressureHeight :: Double -> Double -> Double
+calculatePressureHeight :: Floating a => a -> a -> a
 calculatePressureHeight ps temp = -(log ps) * gasConst * temp / (molarMassAir * gravConst)
 
 -- | return pressure at given altitude in Pa
-altitudePressure :: Double -> Double -> Double
+altitudePressure :: (Floating a, Eq a) => a -> a -> a
 altitudePressure _ 0 = 0
 altitudePressure alt temp = pressureSeaLevel *
                             exp ( -gravConst * molarMassAir * alt / (gasConst * temp) )
 
 -- | pressure of water component in atmosphere
-partialAtmosphericWaterPressure :: Double -- ^ water denisty
-                                -> Double -- ^ air temperature
-                                -> Double
+partialAtmosphericWaterPressure :: Floating a => a -- ^ water denisty
+                                -> a -- ^ air temperature
+                                -> a
 partialAtmosphericWaterPressure wd temp = wd * gasConst * temp / molarMassWater
 
 -- | Using approximation Buck formula
-equilibriumWaterPressure  :: Double -- ^ surface pressure
-                          -> Double -- ^ air temperature
-                          -> Double
+equilibriumWaterPressure  :: Floating a => a -- ^ surface pressure
+                          -> a -- ^ air temperature
+                          -> a
 equilibriumWaterPressure ps temp = let pb = ps / 100 -- convert to millibars
                                        tC = toCelsius temp
                                        tcoeff = 17.502 * tC / (240.97 + tC)
@@ -82,20 +82,20 @@ equilibriumWaterPressure ps temp = let pb = ps / 100 -- convert to millibars
                                    in 1.0007 + 3.46e-6 * pb * 6.1121 * e**tcoeff
 
 -- | relative humdity 0..1
-relativeHumidity :: Double -- ^ water density
-                 -> Double -- ^ temperature
-                 -> Double -- ^ surface pressure
-                 -> Double
+relativeHumidity :: Floating a => a -- ^ water density
+                 -> a -- ^ temperature
+                 -> a -- ^ surface pressure
+                 -> a
 relativeHumidity wd temp ps = partialAtmosphericWaterPressure wd temp / equilibriumWaterPressure ps temp
 
 
 -- | Calculate coriolis force at the given latitude
-coriolisForce :: Lat -> Double
-coriolisForce (Lat lat) =  -2 * 7.292e-5 * sin(toRad lat)
+coriolisForce :: Floating a => Lat -> a
+coriolisForce lat =  -2 * 7.292e-5 * sin(toRad $ fromRational $ toRational $ fromLat lat)
 
 -- | Return coriolis force at given latitude
 --   but not less than 4e-5 in northern hemisphere and -4e-5 southern hemisphere
-coriolisForce' :: Lat -> Double
+coriolisForce' :: (Floating a, Ord a) => Lat -> a
 coriolisForce' = clamp' 4e-5 . coriolisForce
     where clamp' m' 0 = m'
           clamp' m' v = (max m' (abs v) )  * (signum v)
@@ -105,43 +105,43 @@ coriolisForce' = clamp' 4e-5 . coriolisForce
 --         gradient of pressure at 500Mb heights by Y axis(Pa/meters)
 --         gradient step (meters)
 --   return U-wind in m/sec
-geostrophicZonalWind :: Lat -> Double -> Double
-geostrophicZonalWind lat gradY = (- gradY) * gravConst / (coriolisForce' lat)
+geostrophicZonalWind :: (Floating a, Ord a) => Lat -> a -> a
+geostrophicZonalWind lat gradY = gradY * gravConst / (coriolisForce' lat)
 
 -- | Calculates geostrophic meridional wind (north-south) ( V-wind )
 --   given latitude,
 --         gradient of pressure at 500Mb heights by X axis(Pa/meters)
 --   return V-wind in m/sec
-geostrophicMeridionalWind :: Lat -> Double -> Double
+geostrophicMeridionalWind :: (Floating a, Ord a) => Lat -> a -> a
 geostrophicMeridionalWind lat gradX = gradX * gravConst / (coriolisForce' lat)
 
 
 -- | extract seconds since midnight from UTCTime and convert it to Double
-secondsSinceMidnight :: UTCTime -> Double
+secondsSinceMidnight :: Floating a => UTCTime -> a
 secondsSinceMidnight = fromRational . toRational . utctDayTime
 
 -- | return declination of sun angle for given day of year in radians
-declinationOfSunAngle :: Integer -> Double
+declinationOfSunAngle :: Floating a => Integer -> a
 declinationOfSunAngle n = let n' = fromIntegral n
                               val = 0.98565 * (n' + 10.0) + 1.914 * sin ( toRad(0.98565 * (n' - 2)) )
                           in -asin( 0.39779 * cos (toRad val) )
 
 -- | calculate solar hour angle in radians - angle from solar noon
-solarHourAngle :: Lon -> UTCTime -> Double
-solarHourAngle (Lon lon) t =
+solarHourAngle :: Floating a  => Lon -> UTCTime -> a
+solarHourAngle lon t =
     let secondsToDegrees = 180.0 - (secondsSinceMidnight t) * 360.0 / secondsInADay
-    in toRad (lon - secondsToDegrees)
+    in toRad (fromLon lon - secondsToDegrees)
 
 -- | calculate solar zenith angle in radians
-solarZenithAngle :: Lat -> Integer -> Double -> Double
-solarZenithAngle (Lat lat) dayOfYear hourAngle =
+solarZenithAngle :: Floating a => Lat -> Integer -> a -> a
+solarZenithAngle lat dayOfYear hourAngle =
   let da = declinationOfSunAngle dayOfYear
-      latr = toRad lat
+      latr = toRad ( fromLat lat)
       a = sin(latr) * sin (da) + cos (latr) * cos (da) * cos (hourAngle)
   in acos(a)
 
 -- | return solar energy influx (W/m^2) at the given coordinate and time in UTC
-solarEnergyInflux :: (Lat, Lon) -> UTCTime -> Double
+solarEnergyInflux :: (Ord a, Floating a) => (Lat, Lon) -> UTCTime -> a
 solarEnergyInflux (lat, lon) t = let (year, _, _) = toGregorian $ utctDay t
                                      janFst =  fromGregorian year 1 1
                                      dayOfYear = diffDays (utctDay t) janFst
@@ -151,9 +151,21 @@ solarEnergyInflux (lat, lon) t = let (year, _, _) = toGregorian $ utctDay t
 
 -- | calculate temperature increase (K/s) at given coordinate
 --   cloudCover: cloud cover coefficient (0..1)
-temperatureDiffPerSecond :: (Lat, Lon) -> UTCTime -> Double -> Double
+temperatureDiffPerSecond :: (Ord a, Floating a) => (Lat, Lon) -> UTCTime -> a -> a
 temperatureDiffPerSecond coord t cloudCover =
     let rawSolarInflux = solarEnergyInflux coord t
         albedo = 0.3 + (0.6 * cloudCover) -- heuristic formula
         absorbedSolarInflux = (1.0 - albedo) * rawSolarInflux
-    in absorbedSolarInflux / 1.2e6 -- experimental formula
+    in absorbedSolarInflux / 1.8e6 -- experimental formula
+
+-- |  Very primitive calculation of evaporation of water (kilogramms/m^3 per second)
+-- with temp <= 0 Celsium no evaporation
+-- with temp > 0 increase relative humidity is linear relative to air temp and max with t=50C
+-- second parameter is evaporation coefficent [0..1]
+-- return evaporation of water from surface (kg/ (m^3 * second) )
+surfaceEvaporation :: (Ord a, Floating a) => a -> a -> a
+surfaceEvaporation ta ec = let t = toCelsius ta
+                               tc = (min t 50) / 50
+                               pconst = 1e-9 -- kg/ (m^3 * sec)
+                           in if t <= 0 then 0
+                              else ec * tc * pconst

@@ -20,11 +20,11 @@ clamp val = if val > minBound
 toLat :: Double -> Lat
 toLat val = clamp (Lat val)
 
-fromLat :: Lat -> Double
-fromLat (Lat v) = v
+fromLat :: Floating a => Lat -> a
+fromLat (Lat v) = (fromRational . toRational ) v
 
-fromLon :: Lon -> Double
-fromLon (Lon v) = v
+fromLon :: Floating a => Lon -> a
+fromLon (Lon v) = (fromRational . toRational ) v
 
 toLon :: Double -> Lon
 toLon val = if val < 0 then toLon (val + 360.0)  else clamp (Lon val)
@@ -33,8 +33,8 @@ toLatLon :: Double -> Double -> (Lat, Lon)
 toLatLon lat lon = (toLat lat, toLon lon)
 
 -- | radius of earth (m)
-earthRadius :: Double
+earthRadius :: Floating a => a
 earthRadius = 6378100.0
 
-earthSurfaceArea :: Double
+earthSurfaceArea :: Floating a => a
 earthSurfaceArea = 4 * pi * earthRadius**2
