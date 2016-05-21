@@ -1,9 +1,10 @@
+{-# LANGUAGE OverloadedStrings #-}
 module CommandLineOptions(ProgramOpt(..), parseOptions, OutputType(..)) where
 
 import Options.Applicative
-import Data.List.Split(splitOn)
 import Data.Time.Calendar(Day, fromGregorian)
 import Data.Time.Format(defaultTimeLocale, parseTimeM, formatTime)
+import qualified Data.Text as T
 
 data Verbosity = Normal | Verbose deriving (Show, Eq)
 
@@ -15,7 +16,7 @@ outputTypeToString t = case t of
   Text -> "text"
 
 data ProgramOpt = ProgramOpt {
-   stationListIATACodes :: [String]
+   stationListIATACodes :: [T.Text]
   , verbosity  :: Verbosity
   , startDate  :: Day
   , numDays    :: Integer
@@ -76,8 +77,8 @@ parseOutputInterval = option auto
               )
 
 
-parseStationList :: Parser [String]
-parseStationList =  filter (not . null) . (splitOn ",")
+parseStationList :: Parser [T.Text]
+parseStationList =  filter (not . T.null) . map T.strip . T.splitOn "," . T.pack
                     <$> strOption
                     ( short 's'
                       <> long "stations"

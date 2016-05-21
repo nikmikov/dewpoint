@@ -43,19 +43,20 @@ data CellBox  = CellBox {
 
 type Ix = R.DIM2
 
-type DUArray = R.Array R.U Ix Double
+type DUArray = R.Array R.U Ix Float
 
 data Grid = Grid {
-  gridLats :: Seq Lat
-  , gridLons :: Seq Lon
-  , gridCellGeoCoord :: R.Array R.V Ix (Lat, Lon)
-  , gridSurfaceHeight :: R.Array R.U Ix Int
-  , gridShape :: Ix
-  , gridAirTemp :: !DUArray
-  , gridUWind :: !DUArray
-  , gridVWind :: !DUArray
-  , gridCloudCover :: !DUArray
-  , gridWaterDensity :: !DUArray -- ^ density of water vapor in atmosphere
+      gridLats :: Seq Lat
+    , gridLons :: Seq Lon
+    , gridCellGeoCoord :: R.Array R.V Ix (Lat, Lon)
+    , gridShape :: Ix
+    , gridSurfaceHeight :: !DUArray
+    , gridAirTemp :: !DUArray
+    , gridUWind :: !DUArray
+    , gridVWind :: !DUArray
+    , gridCloudCover :: !DUArray
+    , gridWaterDensity :: !DUArray -- ^ density of water vapor in atmosphere
+    , gridEvapCoeff :: !DUArray
   } deriving (Show)
 
 
@@ -71,20 +72,20 @@ gridCreate lats lons =
   , gridLons = lons'
   , gridShape = sh
   , gridCellGeoCoord = R.computeVectorS $ R.fromFunction sh (computeCellCenter lats' lons')
-  , gridSurfaceHeight = izeros
-  , gridAirTemp       = dzeros
-  , gridUWind         = dzeros
-  , gridVWind         = dzeros
-  , gridCloudCover    = dzeros
-  , gridWaterDensity  = dzeros
+  , gridSurfaceHeight = fill' 0
+  , gridAirTemp       = fill' 0
+  , gridUWind         = fill' 0
+  , gridVWind         = fill' 0
+  , gridCloudCover    = fill' 0
+  , gridWaterDensity  = fill' 0
+  , gridEvapCoeff     = fill' 0
   }
   where lats' = S.sort $ S.fromList lats
         lons' = S.sort $ S.fromList lons
         numX = (S.length lons' - 1)
         numY = (S.length lats' - 1)
         sh = R.Z :. numX :. numY
-        dzeros = (R.computeS . R.fromFunction sh . const) 0
-        izeros = (R.computeS . R.fromFunction sh . const) 0
+        fill' = R.computeS . R.fromFunction sh . const
 
 -- |create grid given number of cell by X and Y axis
 gridCreateFixed :: Int -> Int -> Grid
@@ -94,7 +95,8 @@ gridCreateFixed sizeX sizeY = let latLen = fromLat maxBound - fromLat minBound
                                   stepY = latLen / fromIntegral (sizeY + 1)
                                   lons = toLon <$> [ fromIntegral x * stepX | x <- [0..sizeX-1]  ]
                                   minLat = fromLat minBound
-                                  lats = toLat <$> [ minLat + fromIntegral y * stepY| y <- [0..sizeY-1]  ]
+                                  lats = toLat <$> [ minLat + fromIntegral y * stepY |
+                                                     y <- [0..sizeY-1]  ]
                               in gridCreate (lats ++ maxBound:[]) (lons ++ maxBound:[])
 
 -- | number of cells by X, Y
@@ -117,7 +119,7 @@ gridGetCellBBox grid (_ :. x :. y) =
   }
 
 -- | aproximate length of cell side in meters (assuming cell is a square)
-gridCellLengthMeters :: Grid -> Double
+gridCellLengthMeters :: Floating a => Grid -> a
 gridCellLengthMeters g = let (numX, numY) = gridSizeXY g
                              cellArea = earthSurfaceArea / fromIntegral (numX * numY)
                          in sqrt(cellArea)
@@ -128,13 +130,13 @@ gridMaxX = flip (-) 1 . fst . gridSizeXY
 gridMaxY :: Grid -> Int
 gridMaxY = flip (-) 1 . snd . gridSizeXY
 
-gridSrcCellX :: Grid -> Ix -> Double -> Ix
+gridSrcCellX :: (Ord a, Num a) => Grid -> Ix -> a -> Ix
 gridSrcCellX g ix u
   | u > 0  = gridCellLeft g ix
   | u < 0  = gridCellRight g ix
 gridSrcCellX _ ix _ = ix
 
-gridSrcCellY :: Grid -> Ix -> Double -> Ix
+gridSrcCellY :: (Ord a, Num a) => Grid -> Ix -> a -> Ix
 gridSrcCellY g ix v
   | v > 0  = gridCellDown g ix
   | v < 0  = gridCellUp g ix

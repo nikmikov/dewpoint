@@ -67,6 +67,8 @@ def read_header():
             j = json.loads(userinput)
             if 'lats' in j and 'lons' in j:
                 return j
+            else:
+                raise Exception("Header doesn't have required fields [lats, lons]")
         except Exception:
             traceback.print_exc()
 
@@ -84,24 +86,26 @@ def main(argv=None):
     print("Plot process started. Waiting for header")
     h = read_header()
     lats, lons = h['lats'], h['lons']
+    lats = lats[:-1]
+    lons = lons[:-1]
     bmaps = create_basemaps(lats, lons)
     xi = bmaps['global_x']
     yi = bmaps['global_y']
-    a_shape = (len(lats),len(lons))
+    a_shape = ( len(lats), len(lons))
 
     fig, ax = plt.subplots()
-    lev = [x for x in range(-40, 50, 1)]
+    lev = [x/2 for x in range(-80, 80, 1)]
     def update(data):
-        Zc = [ x - 275 for x in data['temp'] ]
+        Zc = data['temp']
         Z = np.reshape(np.asarray(Zc), a_shape)
         U = np.reshape(np.asarray(data['uwind']), a_shape)
         V = np.reshape(np.asarray(data['vwind']), a_shape)
         ax.cla()
         bmaps['global'].drawcoastlines()
         cont = ax.contourf(xi, yi, Z,  extend="both",antialiasing=True, levels = lev)
-        ax.hold(True)
-        ax.quiver(xi,yi,U, V)
-        print("plotted")
+#        ax.hold(True)
+#        ax.quiver(xi,yi,U, V)
+        print("plotted:" + data['frame'])
 
 
 

@@ -1,3 +1,4 @@
+--{-# LANGUAGE OverloadedStrings #-}
 module Main where
 
 import Paths_dewpoint (version)
@@ -5,10 +6,9 @@ import Data.Version (showVersion)
 import Data.Time.Clock(UTCTime(..), DiffTime, secondsToDiffTime, diffUTCTime)
 import Data.Time.Format(formatTime, defaultTimeLocale)
 import qualified CommandLineOptions as Opt
+import qualified Plot as Plot
 import Options.Applicative((<>), execParser, info, helper, fullDesc, progDesc, header)
 
-import Data.List(intersperse)
-import Data.List.Split(splitOn)
 import qualified Data.Set as S
 
 import qualified DewPoint.Grid as G
@@ -19,6 +19,13 @@ import qualified Data.Array.Repa as R
 import System.FilePath
 import Text.Printf
 import Control.Monad(when)
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BS8
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import Data.Text(snoc)
+import qualified Data.Text.IO as T
+import Data.Foldable(toList)
 
 -- | Return version string
 versionInfo :: String
@@ -32,12 +39,12 @@ data MeteoStation = MeteoStation
                     , stationName :: String
                     , latLon   :: (Double, Double)
                     , gridCell :: G.Ix
-                    }
+                    } deriving (Show)
 
 -- | output station data in format:
 --   SYD|-33.86,151.21,39|2015-12-23T05:02:12Z|Rain|+12.5|1004.3|97
 stationString :: G.Grid -> UTCTime -> MeteoStation -> String
-stationString g t st = printf "%3s|%9.5f,%9.5f|%s|%s|%+5.1f|%f|%d|%10.4f"
+stationString g t st = printf "%3s|%9.5f,%9.5f|%s|%s|%+5.1f|%f|%2d|%10.4f|%10.4f|%10.4f"
                        (iataCode st)
                        lat lon
                        (formatTime defaultTimeLocale "%FT%TZ" t)
@@ -46,20 +53,26 @@ stationString g t st = printf "%3s|%9.5f,%9.5f|%s|%s|%+5.1f|%f|%d|%10.4f"
                        ps
                        rh
                        se
+                       u
+                       v
   where ix = gridCell st
         (lat, lon) = latLon st
         temp = (flip R.index ix . G.gridAirTemp ) g
         alt = (flip R.index ix . G.gridSurfaceHeight ) g
-        ps  = Ph.altitudePressure (fromIntegral alt) temp
+        ps  = Ph.altitudePressure alt temp
         wd  = (flip R.index ix . G.gridWaterDensity ) g
         rh  = toInteger $ round $ Ph.relativeHumidity wd temp ps
-        se = Ph.solarEnergyInflux (Geo.toLatLon lat lon) t
+        se::Double
+        se  = Ph.solarEnergyInflux (Geo.toLatLon lat lon) t
+        v   = (G.gridVWind g) R.! ix
+        u   = (G.gridUWind g) R.! ix
 
 
-loadStations :: String -> S.Set String -> G.Grid -> IO [MeteoStation]
+loadStations :: String -> S.Set T.Text -> G.Grid -> IO [MeteoStation]
 loadStations dataDir st g = do
-  let f = map (toStation) . filter (flip S.member st . head ) . map (splitOn ";") . lines
-  content <- readFile $ dataDir </> "stations.csv"
+  let f = map (toStation . map T.unpack) . filter (flip S.member st . head ) . map split' . T.lines
+      split' = T.splitOn (T.pack ";")
+  content <- T.readFile $ dataDir </> "stations.csv"
   let stations = f content
   if (length stations == length st)
   then return stations
@@ -69,7 +82,8 @@ loadStations dataDir st g = do
                 $ G.gridGetLocationIx g (Geo.toLatLon lat lon)
                     where (lat,lon) = (read lat', read lon')
           toStation _ = error "Malformed station line in input CSV"
-          toDiffStr = concat . intersperse ", " . S.toList . S.difference st . S.fromList . map iataCode
+          setToStr = T.unpack . T.concat . map( `snoc` ',' ) .  S.toList
+          toDiffStr = setToStr . S.difference st . S.fromList . map (T.pack . iataCode)
 
 validateOpt :: Monad m => Opt.ProgramOpt -> m Opt.ProgramOpt
 validateOpt o = if (Opt.outputType o) == Opt.Text && null (Opt.stationListIATACodes o)
@@ -77,23 +91,39 @@ validateOpt o = if (Opt.outputType o) == Opt.Text && null (Opt.stationListIATACo
                 else return o
 
 
-printOutput :: [MeteoStation]
+printOutput :: ( (G.Grid, UTCTime) -> BS.ByteString) -- ^ print function
             -> UTCTime           -- ^ start time
             -> Integer           -- ^ print interval in seconds
             -> (G.Grid, UTCTime) -- ^ (grid, currentTime)
             -> IO (G.Grid, UTCTime)
-printOutput st t0 dt (g, t) =
-    do let secSinceStart = round $ realToFrac $ diffUTCTime t t0
+printOutput pFn t0 dt (g, t) =
+    do let secSinceStart = (round . toRational) $ diffUTCTime t t0
        when (secSinceStart `mod` dt == 0) $
-            mapM_ (putStrLn . stationString g t) st
+            BS8.putStrLn $ pFn (g, t)
        return (g, t)
 
+printStationdData :: [MeteoStation] -> (G.Grid, UTCTime) -> BS.ByteString
+printStationdData = flip f'
+    where f' (g, t) = T.encodeUtf8 . T.intercalate (T.pack "\n") . fmap (T.pack . stationString g t)
+
+plotHeader :: G.Grid -> BS.ByteString
+plotHeader g = Plot.encodeHeader "Temperature and U,V winds plot"
+               (toList $ Geo.fromLat <$> G.gridLats g)
+               (toList $ Geo.fromLon <$> G.gridLons g)
+
+plotFrame :: (G.Grid, UTCTime) -> BS.ByteString
+plotFrame (g, t) = Plot.encodeFrame t
+                   ( (map Ph.toCelsius .  R.toList . R.transpose . G.gridAirTemp)  g)
+                   (R.toList $ R.transpose $ G.gridUWind g)
+                   (R.toList $ R.transpose $ G.gridVWind g)
+
 initGrid :: G.Grid
-initGrid = let g = G.gridCreateFixed 100 200
-               sh = G.gridShape g
-           in g {
-                    G.gridAirTemp = (R.computeS . R.fromFunction sh . const) Ph.avgSurfaceTemp
-                }
+initGrid = g {
+             G.gridAirTemp = (R.computeS . R.fromFunction sh . const) Ph.avgSurfaceTemp
+           , G.gridEvapCoeff = (R.computeS . R.fromFunction sh . const) 1
+           }
+    where g = G.gridCreateFixed 100 200
+          sh = G.gridShape g
 
 run :: Opt.ProgramOpt -> IO()
 run opt = do
@@ -103,7 +133,10 @@ run opt = do
       printInterval = (Opt.outputInterval  opt) * 60
       st = S.fromList (Opt.stationListIATACodes opt)
   stations <- loadStations (Opt.dataDir opt) st grid
-  loop stations tstart timeInterval printInterval (grid, tstart)
+  let isPlot = Opt.Plot  == Opt.outputType opt
+      printFn = if isPlot then plotFrame else printStationdData stations
+  when isPlot $  (BS8.putStrLn . plotHeader) grid
+  loop printFn tstart timeInterval printInterval (grid, tstart)
     where loop st t0 dt dt' (g, t) = Sim.integrate g t dt
                                      >>= printOutput st t0 dt'
                                      >>= loop st t0 dt dt'

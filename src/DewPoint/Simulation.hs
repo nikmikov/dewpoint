@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+--{-# LANGUAGE BangPatterns #-}
 module DewPoint.Simulation (integrate, paramAdvectionDiff) where
 
 import Data.Time.Clock
@@ -9,19 +9,20 @@ import DewPoint.Physics
 --import Control.Exception.Base
 import DewPoint.Geo(Lat)
 
---import Debug.Trace
+import Debug.Trace
+import Data.Array.Repa.Repr.Unboxed(Unbox)
 
 -- | temperature increase due to solar influx at given cell at given time interval in seconds
-tempDiffSolarInflux :: G.Grid
+tempDiffSolarInflux :: (Ord a, Floating a, Unbox a)
+                    => G.Grid
+                    -> R.Array R.U G.Ix a -- ^ cloud cover
                     -> UTCTime
-                    -> Double
+                    -> a         -- ^ time interval in seconds
                     -> G.Ix
-                    -> Double
-tempDiffSolarInflux g t dt ix = let tdps = temperatureDiffPerSecond
-                                           ( (G.gridCellGeoCoord g) ! ix )
-                                           t
-                                           ( (G.gridCloudCover g) ! ix )
-                                in tdps * dt
+                    -> a
+tempDiffSolarInflux g gridCloudCover t dt ix =
+    dt * temperatureDiffPerSecond ( (G.gridCellGeoCoord g) ! ix ) t ( gridCloudCover ! ix )
+
 
 -- | parameter advection due to winds
 --
@@ -39,15 +40,15 @@ tempDiffSolarInflux g t dt ix = let tdps = temperatureDiffPerSecond
 --     ---------------
 --
 --
-paramAdvectionDiff :: Double -- ^ U-wind along X (m/s)
-                   -> Double -- ^ V-wind along Y (m/s)
-                   -> Double -- ^ x-source cell quantity
-                   -> Double -- ^ y-source cell quantity
-                   -> Double -- ^ length of cell side (assuming cell is always a square)
-                   -> Double -- ^ time interval (sec)
-                   -> Double -- ^ initial quantity
-                   -> (Double, Double, Double) -- ^ change of quantity in the cell
-                                               --   + influx of quantity  (adX, adY)
+paramAdvectionDiff :: (Floating a, Ord a)
+                   => a -- ^ U-wind along X (m/s)
+                   -> a -- ^ V-wind along Y (m/s)
+                   -> a -- ^ x-source cell quantity
+                   -> a -- ^ y-source cell quantity
+                   -> a -- ^ length of cell side (assuming cell is always a square)
+                   -> a -- ^ time interval (sec)
+                   -> a -- ^ initial quantity
+                   -> (a, a, a) -- ^ change of quantity in the cell + influx of quantity  (adX, adY)
 paramAdvectionDiff u v aXs aYs l dt a0 =
   let dx = min (abs(u) * dt) l
       dy = min (abs(v) * dt) l
@@ -64,40 +65,49 @@ paramAdvectionDiff u v aXs aYs l dt a0 =
   in (a1 - a0, adX, adY)
 
 
-tempDiffAdvection :: G.Grid -> Double -> G.Ix -> Double
-tempDiffAdvection !g !dt !ix = let u = (G.gridUWind g) ! ix
-                                   v = (G.gridUWind g) ! ix
-                                   t0 = (G.gridAirTemp g) ! ix
-                                   ixU = G.gridSrcCellX g ix u
-                                   ixV = G.gridSrcCellY g ix v
-                                   tXs = (G.gridAirTemp g) ! ixU
-                                   tYs = (G.gridAirTemp g) ! ixV
-                                   l = G.gridCellLengthMeters g
-                                   (dT, _, _) = paramAdvectionDiff u v tXs tYs l dt t0
-                               in dT
+tempDiffAdvection :: (Floating a, Ord a, Unbox a)
+                     => G.Grid
+                     -> R.Array R.U G.Ix a -- air temp grid
+                     -> R.Array R.U G.Ix a -- u-wind grid
+                     -> R.Array R.U G.Ix a -- v-wind grid
+                     -> a
+                     -> G.Ix
+                     -> a
+tempDiffAdvection g gridAirTemp gridUWind gridVWind dt ix
+    = let u = gridUWind ! ix
+          v = gridVWind ! ix
+          t0 = gridAirTemp ! ix
+          ixU = G.gridSrcCellX g ix u
+          ixV = G.gridSrcCellY g ix v
+          tXs = gridAirTemp ! ixU
+          tYs = gridAirTemp ! ixV
+          l = G.gridCellLengthMeters g
+          (dT, _, _) = paramAdvectionDiff u v tXs tYs l dt t0
+      in dT
 
-diffTimeToSec :: DiffTime -> Double
+diffTimeToSec :: Floating a => DiffTime -> a
 diffTimeToSec = fromRational . toRational
 
 -- | second order central differences
-centralDifferences :: Double -> Double -> Double -> Double
+centralDifferences :: Floating a => a -> a -> a -> a
 centralDifferences p n step = (n - p) / (2 * step)
 
 -- | forward difference for the first element
-forwardDifferences :: Double -> Double -> Double -> Double -> Double
+forwardDifferences :: Floating a => a -> a -> a -> a -> a
 forwardDifferences e0 e1 e2 step = -(3.0*e0 - 4.0*e1 + e2) / (2.0*step)
 
 -- | backward difference for the last element
-backwardDifferences :: Double -> Double -> Double -> Double -> Double
+backwardDifferences :: Floating a => a -> a -> a -> a -> a
 backwardDifferences l1 l2 l3 = negate . forwardDifferences l1 l2 l3
 
 
 -- | calculate gradient value by X coordinate at given grid cell
-calculateGrad :: (G.Ix -> Double -> G.Ix) -- ^ function to get index of src cell given vector value
-               -> R.Array R.U G.Ix Double -- ^ 2D array to calculate gradient for
-               -> Double -- ^ gradient step
+calculateGrad :: (Ord a, Floating a, Unbox a)
+                => (G.Ix -> a -> G.Ix) -- ^ function to get index of src cell given vector value
+               -> R.Array R.U G.Ix a -- ^ 2D array to calculate gradient for
+               -> a -- ^ gradient step
                -> G.Ix   -- ^ cell index
-               -> Double -- ^ gradient value
+               -> a -- ^ gradient value
 calculateGrad getSrc ar s ix =
     let pix1 = getSrc ix 1
         nix1 = getSrc ix (-1)
@@ -109,29 +119,42 @@ calculateGrad getSrc ar s ix =
     in adaptiveDiff pix1 ix nix1
 
 -- | calculate wind component
-calculateWind :: G.Grid
-              -> R.Array R.U G.Ix Double   -- ^ 500Mb heights
-              -> (Lat -> Double -> Double) -- ^ calculate wind at given latitude and gradient value
-              -> (G.Ix -> Double -> G.Ix)  -- ^ function to get index src cell given vector value
-              -> G.Ix                      -- ^ cell index
-              -> Double
+calculateWind :: (Ord a, Floating a, Unbox a)
+              => G.Grid
+              -> R.Array R.U G.Ix a     -- ^ 500Mb heights
+              -> (Lat -> a -> a)      -- ^ calculate wind at given latitude and gradient value
+              -> (G.Ix -> a -> G.Ix)  -- ^ function to get index src cell given vector value
+              -> G.Ix                 -- ^ cell index
+              -> a
 calculateWind g ar calcWindFn getSrcFn ix =
     let (lat,_) = (G.gridCellGeoCoord g) ! ix
     in calcWindFn lat $ (calculateGrad getSrcFn) ar (G.gridCellLengthMeters g) ix
 
 -- | calculate U-wind component (zonal wind)
-calculateUWind :: G.Grid -> R.Array R.U G.Ix Double -> G.Ix-> Double
+calculateUWind :: (Ord a, Floating a, Unbox a) => G.Grid -> R.Array R.U G.Ix a -> G.Ix-> a
 calculateUWind g ar ix = calculateWind g ar geostrophicZonalWind (G.gridSrcCellY g) ix
 
 -- | calculate V-wind component (meridional wind)
-calculateVWind :: G.Grid -> R.Array R.U G.Ix Double -> G.Ix -> Double
+calculateVWind :: (Ord a, Floating a, Unbox a) => G.Grid -> R.Array R.U G.Ix a -> G.Ix -> a
 calculateVWind g ar ix = calculateWind g ar geostrophicMeridionalWind (G.gridSrcCellX g) ix
 
 -- | calculate pressure at 500Mb heights
-calculate500MbHeights :: R.Array R.U G.Ix Double -- ^ temperatures
-                      -> G.Ix                    -- ^ cell index
-                      -> Double
+calculate500MbHeights :: (Floating a, Unbox a)
+                      => R.Array R.U G.Ix a  -- ^ temperatures
+                      -> G.Ix                -- ^ cell index
+                      -> a
 calculate500MbHeights tempAr = calculatePressureHeight 0.5 . R.index tempAr
+
+-- | diff in water density
+calculateWaterDenistyDiff :: (Ord a, Floating a, Unbox a)
+                             => R.Array R.U G.Ix a
+                             -> R.Array R.U G.Ix a
+                             -> a
+                             -> G.Ix
+                             -> a
+calculateWaterDenistyDiff gridAirTemp gridEvapCoeff dts ix =
+    dts * surfaceEvaporation (gridAirTemp ! ix) (gridEvapCoeff ! ix)
+
 
 -- | perform one iteration step given grid, start_time, time_step
 --   returns updated grid
@@ -139,35 +162,43 @@ integrate :: (Monad m) => G.Grid -> UTCTime -> DiffTime -> m (G.Grid, UTCTime)
 integrate grid t dt = do
   let sh = G.gridShape grid
       dts = diffTimeToSec  dt -- seconds
-      tempDiffFunc = tempDiffSolarInflux grid t dts
+      tempDiffFunc = tempDiffSolarInflux grid (G.gridCloudCover grid) t dts
       t' = addUTCTime ( (fromRational . toRational) dt )  t -- new time
+      gridAirTemp = G.gridAirTemp grid
+      gridUWind = G.gridUWind grid
+      gridVWind = G.gridVWind grid
   -- temperature increase due to solar radiation influx
   let tempDiffS = R.fromFunction sh tempDiffFunc
   -- changes of temperature due to advection caused by wind
-  let tempDiffA = R.fromFunction sh (tempDiffAdvection grid dts)
-  -- total increase of temperature
+  let tempDiffA = R.fromFunction sh $
+                  tempDiffAdvection grid gridAirTemp gridUWind gridVWind dts
+  -- total change of temperature due to solar radiation and advection
   tempAbsorbed <- R.computeUnboxedP $ tempDiffS +^ tempDiffA
-  let tempAbsorbedSum = R.sumAllS tempAbsorbed
   -- we need to emit same amount of temperature as absorbed to keep planet temperature in balance
   -- each cell will emit T proportional to it's T^8, so cell with lower temp will emit much less
   -- than cells with higher T
-  let minTemp = toKelvin (-50)
+  let minTemp = toKelvin (-70)
       minBoundT te' = if te' < minTemp then 0 else te' - minTemp
       currentTemp = G.gridAirTemp grid
-      adjustTemp te' = (minBoundT te') ** 8
+      adjustTemp te' = (minBoundT te') ** 4
   tempE <- R.computeUnboxedP $ R.map adjustTemp currentTemp
   let tempEsum = R.sumAllS tempE
   tempCellEmissionCoeff <- R.computeUnboxedP $ R.map (\v -> -v / tempEsum) tempE
-  tempEmitted <- R.computeUnboxedP $ R.map ( * tempAbsorbedSum ) tempCellEmissionCoeff
-  tempTotal <- R.computeUnboxedP $ (G.gridAirTemp grid) +^ tempEmitted +^ tempAbsorbed
+  tempEmitted <- R.computeUnboxedP $ R.map ( * R.sumAllS tempAbsorbed ) tempCellEmissionCoeff
+  tempTotal <- R.computeUnboxedP $ G.gridAirTemp grid +^ tempEmitted +^ tempAbsorbed
   -- 500Mb geopotential height
   h500Mb <- R.computeUnboxedP $ R.fromFunction sh (calculate500MbHeights currentTemp )
   -- V-winds
   vWind <- R.computeUnboxedP $ R.fromFunction sh (calculateVWind grid h500Mb)
+  -- U-winds
   uWind <- R.computeUnboxedP $ R.fromFunction sh (calculateUWind grid h500Mb)
---  tempNew'   <- R.computeUnboxedS  tempNew
+  -- surface water evaporation
+  let waterDiff = R.fromFunction sh
+                  $ calculateWaterDenistyDiff (G.gridAirTemp grid) (G.gridEvapCoeff grid) dts
+  waterDensity <- R.computeUnboxedP $ G.gridWaterDensity grid +^ waterDiff
   return $! (grid {
                G.gridAirTemp = tempTotal
              , G.gridVWind = vWind
              , G.gridUWind = uWind
+             , G.gridWaterDensity = waterDensity
              } , t')
