@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module CommandLineOptions(ProgramOpt(..), parseOptions, OutputType(..)) where
+module CommandLineOptions(ProgramOpt(..), Verbosity(..), parseOptions, OutputType(..)) where
 
 import Options.Applicative
 import Data.Time.Calendar(Day, fromGregorian)

@@ -4,8 +4,6 @@ import Data.Time.Clock
 import Data.Time.Calendar(toGregorian, fromGregorian, diffDays)
 import DewPoint.Geo
 
-import Debug.Trace
-
 -- | aboslute zero in K
 tZero :: Floating a => a
 tZero = -273.15
@@ -171,7 +169,7 @@ temperatureDiffPerSecond coord t condWaterDensity =
 surfaceEvaporation :: (Ord a, Floating a) => a -> a -> a
 surfaceEvaporation ta ec = let t = toCelsius ta
                                tc = (min t 50) / 50
-                               pconst = 1e-10 -- kg/ (m^3 * sec)
+                               pconst = 3e-10 -- kg/ (m^3 * sec)
                            in if t <= 0 then 0
                               else ec * tc * pconst
 

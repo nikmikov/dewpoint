@@ -83,6 +83,8 @@ def data_update_thread():
             traceback.print_exc()
 
 def main(argv=None):
+    if argv is None:
+        argv = sys.argv
     print("Plot process started. Waiting for header")
     h = read_header()
     lats, lons = h['lats'], h['lons']
@@ -103,8 +105,9 @@ def main(argv=None):
         ax.cla()
         bmaps['global'].drawcoastlines()
         cont = ax.contourf(xi, yi, Z,  extend="both",antialiasing=True, levels = lev)
-#        ax.hold(True)
-#        ax.quiver(xi,yi,U, V)
+        if '--winds' in argv:
+            ax.hold(True)
+            ax.quiver(xi,yi,U, V)
         print("plotted:" + data['frame'])
 
 
