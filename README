@@ -4,20 +4,52 @@ Simple weather simulation
 ### Model characteristic
 Gaussian grid 192x98 cells
 
-Every cell is an octagon connected to 8 neighbour cells: heat and air mass transfer provided by wind
+Heat, atmospheric water mass transfer provided by wind
 
 Winds are modelled using geostrophic equation. Only geopotential height and coriolis effect affect them
 Solar energy heats the air and evaporates water from earth/ocean surface
-Evaporation coefficient for cell is constant
+Evaporation coefficient for each cell is constant: 0.3 for land and 1.0 for sea
 Earth energy loss to space per cell is a constant
 Ocean water movement is not considered
-Clouds/rain/snow?
 
 
 ### Build
 
     stack build
 
+### Requirements
+
+    install python3 modules: netcdf4, numpy
+
+    optional modules for data plotting: matplotlib, basemap
+
+### Import data
+
+    python3 scripts/import_data.py data
+
+    this will download meteostations, heights and land-sea mask data and put them into "data" dir
+
 ### Run
 
-    stack exec dewpoint-exe
+    stack exec dewpoint-exe -- --help
+
+    to see list of available options.
+
+    For example command line:
+
+        stack exec -- dewpoint-exe -s "SIN,SYD" -i 5 -d '2016-01-01' -p 60
+
+    will run simulation with 5 minutes step, start date 1st Jan 2016 and output interval 60minutes
+    (every 12th iteration) and output weather at stations : SYD and SIN
+
+    use -v,--verbose flag to output extended weather information (useful for debugging)
+
+    visualizing data might be very helpful when debugging:
+
+        stack exec -- dewpoint-exe -s "SIN,SYD" -i 5 -p 60 -o plot | scripts/plot_data.py
+
+        will visualise surface temperature
+
+        stack exec -- dewpoint-exe -s "SIN,SYD" -i 5 -p 60 -o plot | scripts/plot_data.py --wind
+
+        will add winds vector field to the plot

@@ -27,11 +27,6 @@ datasets = {
         'url': 'ftp://ftp.cdc.noaa.gov/Datasets/ncep.reanalysis/surface_gauss/land.sfc.gauss.nc'
         , 'file-name': 'land.sfc.gauss.nc'
         , 'desc': 'land-sea mask'
-    },
-    'clear sky surface solar radiation 4-daily' : {
-        'url': 'ftp://ftp.cdc.noaa.gov/Datasets/ncep.reanalysis/surface_gauss/csdsf.sfc.gauss.2016.nc'
-        , 'file-name': 'csdsf.sfc.gauss.2016.nc'
-        , 'desc': '4-daily influx of solar radiation'
     }
 }
 

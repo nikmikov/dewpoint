@@ -6,7 +6,6 @@ import DewPoint.Grid
 import DewPoint.Geo
 import Data.ByteString.Lazy(fromStrict)
 import Data.ByteString
-import Data.Maybe
 import qualified Data.Array.Repa as R
 import qualified DewPoint.Physics as Ph
 import Control.Monad(mzero)

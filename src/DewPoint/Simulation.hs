@@ -9,7 +9,6 @@ import qualified DewPoint.Physics as Ph
 import DewPoint.Geo(Lat)
 import DewPoint.Advection(advectionCoefficients)
 
-import Debug.Trace
 import Data.Array.Repa.Repr.Unboxed(Unbox)
 import Data.Array.Repa.Repr.Vector as R(computeVectorP)
 import Data.Array.Repa.Eval(Elt)
@@ -58,7 +57,7 @@ calculateAdvectionDiff getSrcU getSrcV valArray gridUWind gridVWind dt len =
            linearSz = R.size sh
            indexes  = R.fromFunction sh id
            calcAdv cx cy aX aY a0 = let dX = cx * (aX - a0)
-                                        dY = 2 * cy * (aY - a0) -- speed up vertical advection1
+                                        dY = cy * (aY - a0)
                                     in [ dX + dY, -dX, -dY ]
            f ix (u, v) = let (cx, cy) = advectionCoefficients u v len dt
                          in (cx, cy, u, v, ix)
