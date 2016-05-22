@@ -61,7 +61,7 @@ parseStepInterval = option auto
                ( short 'i'
               <> long "interval"
               <> metavar "INTEGRATION-INTERVAL"
-              <> value 10
+              <> value 20
               <> showDefault
               <> help "Simulation step interval in minutes"
               )
@@ -71,7 +71,7 @@ parseOutputInterval = option auto
                ( short 'p'
               <> long "print-interval"
               <> metavar "PRINT-INTERVAL"
-              <> value 180
+              <> value 60
               <> showDefault
               <> help "Output interval in minutes, should be multiple of integration interval"
               )

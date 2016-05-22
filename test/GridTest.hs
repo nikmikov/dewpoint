@@ -24,23 +24,23 @@ gridU = gridCreateFixed 100 200
 
 minBoundForGridTest :: Assertion
 minBoundForGridTest = (0,0)
-                      @=? (ixToXY $ gridGetLocationIx gridU (minBound, minBound))
+                      @=? ixToXY ( gridGetLocationIx gridU (minBound, minBound))
 
 
-gridSrcCellY_testLowBorder :: Assertion
-gridSrcCellY_testLowBorder = let ix = ix2 0 0
+test_gridSrcCellYLowBorder :: Assertion
+test_gridSrcCellYLowBorder = let ix = ix2 0 0
                              in ix @=? gridSrcCellY gridU ix (1::Double)
 
-gridSrcCellY_testUpperBorder :: Assertion
-gridSrcCellY_testUpperBorder = let ix = ix2 0 (gridMaxY gridU)
+test_gridSrcCellYUpperBorder :: Assertion
+test_gridSrcCellYUpperBorder = let ix = ix2 0 (gridMaxY gridU)
                                in ix @=? gridSrcCellY gridU ix (-1::Double)
 
 gridTests :: TestTree
 gridTests = testGroup "Grid Tests" [
              testGroup "Unit tests"
                            [ testCase "gridMinBound" minBoundForGridTest
-                           , testCase "test lower border gridSrcCellY" gridSrcCellY_testLowBorder
-                           , testCase "test upper border gridSrcCellY" gridSrcCellY_testUpperBorder
+                           , testCase "test lower border gridSrcCellY" test_gridSrcCellYLowBorder
+                           , testCase "test upper border gridSrcCellY" test_gridSrcCellYUpperBorder
                            ],
 
              testGroup "QuickCheck tests"
@@ -58,13 +58,13 @@ prop_gridGetXY grid (lat, lon) = True
                                          (lat2, lon2) = cellBoxBottomRight cb
                                      in (lat >= lat1 && lat < lat2) && (lon >= lon1 && lon1 < lon2 )
 
-prop_gridSrcCellX :: Grid -> (NonNegative Int) -> (NonNegative Int) -> Property
+prop_gridSrcCellX :: Grid -> NonNegative Int -> NonNegative Int -> Property
 prop_gridSrcCellX g (NonNegative x) (NonNegative y) = x <= gridMaxX g && y <= gridMaxY g
                                                 ==> let ix = ix2 x y
                                                         ix' = gridSrcCellX g ix (1::Double)
                                                     in  ix == gridSrcCellX g ix' (-1.0::Double)
 
-prop_gridSrcCellY :: Grid -> (NonNegative Int) -> (Positive Int) -> Property
+prop_gridSrcCellY :: Grid -> NonNegative Int -> Positive Int -> Property
 prop_gridSrcCellY g (NonNegative x) (Positive y) = x <= gridMaxX g && y < gridMaxY g && y > 0
                                                       ==> let ix = ix2 x y
                                                               ix' = gridSrcCellY g ix (-1::Double)

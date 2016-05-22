@@ -7,7 +7,7 @@ import Data.Time.Clock(UTCTime(..), secondsToDiffTime, diffUTCTime)
 import qualified CommandLineOptions as Opt
 import qualified LoadGrid as LG
 import MeteoStation
-import qualified Plot as Plot
+import qualified Plot
 import Options.Applicative((<>), execParser, info, helper, fullDesc, progDesc, header)
 
 import qualified Data.Set as S
@@ -30,7 +30,7 @@ versionInfo :: String
 versionInfo = "Weather simulation v." ++ showVersion version
 
 validateOpt :: Monad m => Opt.ProgramOpt -> m Opt.ProgramOpt
-validateOpt o = if (Opt.outputType o) == Opt.Text && null (Opt.stationListIATACodes o)
+validateOpt o = if Opt.outputType o == Opt.Text && null (Opt.stationListIATACodes o)
                 then fail "Must specify at least one station when --output set to \"text\""
                 else return o
 
@@ -68,7 +68,7 @@ run opt = do
   let
       tstart = UTCTime (Opt.startDate opt) 0
       timeInterval = secondsToDiffTime (Opt.interval  opt) * 60
-      printInterval = (Opt.outputInterval  opt) * 60
+      printInterval = Opt.outputInterval  opt * 60
       st = S.fromList (Opt.stationListIATACodes opt)
       dataDir = Opt.dataDir opt
       gridFile = dataDir </> "grid.json"

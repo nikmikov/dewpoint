@@ -87,8 +87,8 @@ gridCreate lats lons =
   }
   where lats' = S.sort $ S.fromList lats
         lons' = S.sort $ S.fromList lons
-        numX = (S.length lons' - 1)
-        numY = (S.length lats' - 1)
+        numX = S.length lons' - 1
+        numY = S.length lats' - 1
         sh = R.Z :. numX :. numY
         fill' = R.computeS . R.fromFunction sh . const
 
@@ -102,7 +102,7 @@ gridCreateFixed sizeX sizeY = let latLen = fromLat maxBound - fromLat minBound
                                   minLat = fromLat minBound
                                   lats = toLat <$> [ minLat + fromIntegral y * stepY |
                                                      y <- [0..sizeY-1]  ]
-                              in gridCreate (lats ++ maxBound:[]) (lons ++ maxBound:[])
+                              in gridCreate (lats ++ [maxBound]) (lons ++ [maxBound])
 
 -- | number of cells by X, Y
 gridSizeXY :: Grid -> (Int, Int)
@@ -127,7 +127,7 @@ gridGetCellBBox grid (_ :. x :. y) =
 gridCellLengthMeters :: Floating a => Grid -> a
 gridCellLengthMeters g = let (numX, numY) = gridSizeXY g
                              cellArea = earthSurfaceArea / fromIntegral (numX * numY)
-                         in sqrt(cellArea)
+                         in sqrt cellArea
 
 gridMaxX :: Grid -> Int
 gridMaxX = flip (-) 1 . fst . gridSizeXY
@@ -149,7 +149,7 @@ gridSrcCellY _ ix _ = ix
 
 -- | get cell on the right from the given index
 gridCellRight :: Grid -> Ix -> Ix
-gridCellRight g (R.Z :. x :. y) = if x == (gridMaxX g) then R.ix2 0 y else R.ix2 (x + 1) y
+gridCellRight g (R.Z :. x :. y) = if x == gridMaxX g then R.ix2 0 y else R.ix2 (x + 1) y
 
 -- | get cell on the left from the given index
 gridCellLeft :: Grid -> Ix -> Ix
@@ -157,7 +157,7 @@ gridCellLeft g (R.Z :. x :. y) = if x == 0 then R.ix2 (gridMaxX g) y else R.ix2 
 
 -- | get cell on the top from the given index (positive direction Y axis)
 gridCellUp :: Grid -> Ix -> Ix
-gridCellUp g ix@(R.Z :. x :. y) = if y == (gridMaxY g) then ix else R.ix2 x (y + 1)
+gridCellUp g ix@(R.Z :. x :. y) = if y == gridMaxY g then ix else R.ix2 x (y + 1)
 
 -- | get cell on the bottom from the given index (negative direction Y axis)
 gridCellDown :: Grid -> Ix -> Ix

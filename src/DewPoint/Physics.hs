@@ -55,7 +55,7 @@ gasConst = 8.3143
 
 -- | given pressure in atmospheres calculate geopotential height
 calculatePressureHeight :: Floating a => a -> a -> a
-calculatePressureHeight ps temp = -(log ps) * gasConst * temp / (molarMassAir * gravConst)
+calculatePressureHeight ps temp = -log ps * gasConst * temp / (molarMassAir * gravConst)
 
 -- | return pressure at given altitude in Pa
 altitudePressure :: (Floating a, Eq a) => a -> a -> a
@@ -101,7 +101,7 @@ coriolisForce lat =  -2 * 7.292e-5 * sin(toRad (fromLat lat) )
 coriolisForce' :: (Floating a, Ord a) => Lat -> a
 coriolisForce' = clamp' 4e-5 . coriolisForce
     where clamp' m' 0 = m'
-          clamp' m' v = (max m' (abs v) )  * (signum v)
+          clamp' m' v = max m' (abs v)  * signum v
 
 -- | Calculates geostrophic zonal wind (west-east) ( U-wind )
 --   given latitude,
@@ -109,14 +109,14 @@ coriolisForce' = clamp' 4e-5 . coriolisForce
 --         gradient step (meters)
 --   return U-wind in m/sec
 geostrophicZonalWind :: (Floating a, Ord a) => Lat -> a -> a
-geostrophicZonalWind lat gradY = gradY * gravConst / (coriolisForce' lat)
+geostrophicZonalWind lat gradY = gradY * gravConst / coriolisForce' lat
 
 -- | Calculates geostrophic meridional wind (north-south) ( V-wind )
 --   given latitude,
 --         gradient of pressure at 500Mb heights by X axis(Pa/meters)
 --   return V-wind in m/sec
 geostrophicMeridionalWind :: (Floating a, Ord a) => Lat -> a -> a
-geostrophicMeridionalWind lat gradX = gradX * gravConst / (coriolisForce' lat)
+geostrophicMeridionalWind lat gradX = gradX * gravConst / coriolisForce' lat
 
 
 -- | extract seconds since midnight from UTCTime and convert it to Double
@@ -132,7 +132,7 @@ declinationOfSunAngle n = let n' = fromIntegral n
 -- | calculate solar hour angle in radians - angle from solar noon
 solarHourAngle :: Floating a  => Lon -> UTCTime -> a
 solarHourAngle lon t =
-    let secondsToDegrees = 180.0 - (secondsSinceMidnight t) * 360.0 / secondsInADay
+    let secondsToDegrees = 180.0 - secondsSinceMidnight t * 360.0 / secondsInADay
     in toRad (fromLon lon - secondsToDegrees)
 
 -- | calculate solar zenith angle in radians
@@ -140,8 +140,8 @@ solarZenithAngle :: Floating a => Lat -> Integer -> a -> a
 solarZenithAngle lat dayOfYear hourAngle =
   let da = declinationOfSunAngle dayOfYear
       latr = toRad ( fromLat lat)
-      a = sin(latr) * sin (da) + cos (latr) * cos (da) * cos (hourAngle)
-  in acos(a)
+      a = sin latr * sin da + cos latr * cos da * cos hourAngle
+  in acos a
 
 -- | return solar energy influx (W/m^2) at the given coordinate and time in UTC
 solarEnergyInflux :: (Ord a, Floating a) => (Lat, Lon) -> UTCTime -> a
@@ -150,7 +150,7 @@ solarEnergyInflux (lat, lon) t = let (year, _, _) = toGregorian $ utctDay t
                                      dayOfYear = diffDays (utctDay t) janFst
                                      ha = solarHourAngle lon t
                                      sza = solarZenithAngle lat dayOfYear ha
-                                 in if cos (sza) > 0 then solarConst * cos (sza) else 0
+                                 in if cos sza > 0 then solarConst * cos sza else 0
 
 -- | calculate temperature increase (K/s) at given coordinate
 --   cloudCover: cloud cover coefficient (0..1)
@@ -168,7 +168,7 @@ temperatureDiffPerSecond coord t condWaterDensity =
 -- return evaporation of water from surface (kg/ (m^3 * second) )
 surfaceEvaporation :: (Ord a, Floating a) => a -> a -> a
 surfaceEvaporation ta ec = let t = toCelsius ta
-                               tc = (min t 50) / 50
+                               tc = min t 50 / 50
                                pconst = 3e-10 -- kg/ (m^3 * sec)
                            in if t <= 0 then 0
                               else ec * tc * pconst
