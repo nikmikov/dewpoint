@@ -194,8 +194,10 @@ integrate grid t dt = do
   -- changes of temperature due to advection caused by wind
   tempDiffA <- calculateAdvectionDiff
                gridSrcCellX gridSrcCellY gridAirTemp gridUWind gridVWind dts len
+  let tempDiffA' = R.map (\v -> if abs(v) / dts  > 0 then maxAdvPerSec * signum v else v  ) tempDiffA
+      maxAdvPerSec = 5.0 / (60 * 60) -- maximum 5 degrees / hour
   -- total change of temperature due to solar radiation and advection
-  tempAbsorbed <- R.computeUnboxedP $ tempDiffS +^ tempDiffA
+  tempAbsorbed <- R.computeUnboxedP $ tempDiffS +^ tempDiffA'
   -- we need to emit same amount of temperature as absorbed to keep planet temperature in balance
   -- each cell will emit T proportional to it's T^4, so cell with lower temp will emit much less
   -- than cells with higher T
@@ -246,7 +248,7 @@ integrate grid t dt = do
   waterDropletsSz <- R.computeUnboxedP $ R.zipWith (satAddMin 0) dropletsScaled dropletSizeIncrease
   -- precipation
   let precipationProb = R.zipWith precipationChance waterDropletsSz gridPrecipationTriggered
-      precipationChance dsz prec = round $ (if prec then 200 else 100) * Ph.precipationProbability dsz
+      precipationChance dsz prec = round $ (if prec then 400 else 100) * Ph.precipationProbability dsz
       randSeed = (round . toRational . utcTimeToPOSIXSeconds) t
       randIntAr = randomishIntArray sh 10 100 randSeed
   precipationTriggered <- R.computeUnboxedP $ R.zipWith (<) randIntAr precipationProb

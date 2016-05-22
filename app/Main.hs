@@ -6,6 +6,7 @@ import Data.Version (showVersion)
 import Data.Time.Clock(UTCTime(..), DiffTime, secondsToDiffTime, diffUTCTime)
 import Data.Time.Format(formatTime, defaultTimeLocale)
 import qualified CommandLineOptions as Opt
+import qualified LoadGrid as LG
 import qualified Plot as Plot
 import Options.Applicative((<>), execParser, info, helper, fullDesc, progDesc, header)
 
@@ -46,7 +47,7 @@ data MeteoStation = MeteoStation
 stationString :: G.Grid -> UTCTime -> MeteoStation -> String
 stationString g t st =
     printf
-    "%3s|%9.5f,%9.5f|%s|%s|%+5.1f|%f|%3d|%10.4f|%10.4f|%10.4f|%10.10f|%12.10f|%2.2f|%12.10f"
+    "%3s|%9.5f,%9.5f|%s|%5s|%+5.1f|%f|%3d|%10.4f|%10.4f|%10.4f|%10.10f|%12.10f|%2.2f|%12.10f"
     (iataCode st)
     lat lon
     (formatTime defaultTimeLocale "%FT%TZ" t)
@@ -137,12 +138,20 @@ initGrid = g {
 
 run :: Opt.ProgramOpt -> IO()
 run opt = do
-  let grid   = initGrid
+  let
       tstart = UTCTime (Opt.startDate opt) 0
       timeInterval = secondsToDiffTime (Opt.interval  opt) * 60
       printInterval = (Opt.outputInterval  opt) * 60
       st = S.fromList (Opt.stationListIATACodes opt)
-  stations <- loadStations (Opt.dataDir opt) st grid
+      dataDir = Opt.dataDir opt
+      gridFile = dataDir </> "grid.json"
+  maybeGrid <- LG.loadGrid <$> BS.readFile gridFile
+  grid <- case maybeGrid of
+    (Just a) -> return a
+    _        -> fail $ "Unable to load grid from " ++ show gridFile
+                       ++ " run scripts/import_data.py to import data"
+
+  stations <- loadStations  dataDir st grid
   let isPlot = Opt.Plot  == Opt.outputType opt
       printFn = if isPlot then plotFrame else printStationdData stations
   when isPlot $  (BS8.putStrLn . plotHeader) grid
