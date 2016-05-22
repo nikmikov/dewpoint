@@ -2,4 +2,6 @@
 data/
 *~
 *.nc
+*.csv
+*.json
 data/

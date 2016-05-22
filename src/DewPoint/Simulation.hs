@@ -35,7 +35,7 @@ tempDiffEmission:: (Ord a, Floating a, Elt a, Unbox a) =>
                 -> R.Array R.D G.Ix a -- ^ decrease of temperature due to emission
 tempDiffEmission gridAirTemp tempAbsorbed =
     let minTemp = Ph.toKelvin (-70)
-        adjustTemp te' = max (te' - minTemp) 0  ** 6
+        adjustTemp te' = max (te' - minTemp) 0  ** 4
         tempE = R.map adjustTemp gridAirTemp
         tempEsum = R.sumAllS tempE
         tempCellEmissionCoeff = R.map (\v -> -v / tempEsum) tempE
@@ -56,8 +56,9 @@ calculateAdvectionDiff getSrcU getSrcV valArray gridUWind gridVWind dt len =
     do let sh = R.extent valArray
            linearSz = R.size sh
            indexes  = R.fromFunction sh id
-           calcAdv cx cy aX aY a0 = let dX = cx * (aX - a0)
-                                        dY = cy * (aY - a0)
+           calcAdv cx cy aX aY a0 = let dX = min maxChangeSec (cx * (aX - a0) )
+                                        dY = min maxChangeSec (cy * (aY - a0) )
+                                        maxChangeSec =  a0 *  5e-2 * dt / (60*60) -- maximum 5% per hour
                                     in [ dX + dY, -dX, -dY ]
            f ix (u, v) = let (cx, cy) = advectionCoefficients u v len dt
                          in (cx, cy, u, v, ix)
@@ -194,11 +195,11 @@ integrate grid t dt = do
   tempDiffA <- calculateAdvectionDiff
                gridSrcCellX gridSrcCellY gridAirTemp gridUWind gridVWind dts len
   let tempDiffA' = R.map (\v -> if abs v / dts  > 0 then maxAdvPerSec * signum v else v  ) tempDiffA
-      maxAdvPerSec = 5.0 / (60 * 60) -- maximum 5 degrees / hour
+      maxAdvPerSec = 1.0 / (60 * 60) -- maximum 1 degree / hour
   -- total change of temperature due to solar radiation and advection
   tempAbsorbed <- R.computeUnboxedP $ tempDiffS +^ tempDiffA'
   -- we need to emit same amount of temperature as absorbed to keep planet temperature in balance
-  -- each cell will emit T proportional to it's T^4, so cell with lower temp will emit much less
+  -- each cell will emit T proportional to it's T^2, so cell with lower temp will emit much less
   -- than cells with higher T
   tempEmitted <- R.computeUnboxedP $ tempDiffEmission gridAirTemp tempAbsorbed
   tempTotal <- R.computeUnboxedP $ gridAirTemp +^ tempAbsorbed +^ tempEmitted

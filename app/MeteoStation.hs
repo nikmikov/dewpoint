@@ -92,7 +92,7 @@ loadStations dataDir st g = do
   if length stations == length st
   then return stations
   else fail $ "Stations not found: " ++ toDiffStr stations
-    where toStation [iata':country':city':name':lat':lon']
+    where toStation [iata',country',city',name',lat',lon']
               = MeteoStation iata' country' city' name' (lat, lon)
                 $ G.gridGetLocationIx g (Geo.toLatLon lat lon)
                     where (lat,lon) = (read lat', read lon')
