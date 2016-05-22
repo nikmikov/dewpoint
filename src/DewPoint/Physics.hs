@@ -157,7 +157,7 @@ solarEnergyInflux (lat, lon) t = let (year, _, _) = toGregorian $ utctDay t
 temperatureDiffPerSecond :: (Ord a, Floating a) => (Lat, Lon) -> UTCTime -> a -> a
 temperatureDiffPerSecond coord t condWaterDensity =
     let rawSolarInflux = solarEnergyInflux coord t
-        albedo = 0.3 + (0.6 * cloudCover condWaterDensity  ) -- heuristic formula
+        albedo = 0.3 + (0.4 * cloudCover condWaterDensity  ) -- heuristic formula
         absorbedSolarInflux = (1.0 - albedo) * rawSolarInflux
     in absorbedSolarInflux / 1.8e6 -- experimental formula
 
