@@ -82,16 +82,21 @@ equilibriumWaterPressure ps temp = let pb = ps / 100 -- convert to millibars
                                    in 1.0007 + 3.46e-6 * pb * 6.1121 * e**tcoeff
 
 -- | relative humdity 0..1
-relativeHumidity :: Floating a => a -- ^ water density
+relativeHumidity :: (Floating a, Ord a) => a -- ^ water density
                  -> a -- ^ temperature
                  -> a -- ^ surface pressure
                  -> a
-relativeHumidity wd temp ps = partialAtmosphericWaterPressure wd temp / equilibriumWaterPressure ps temp
+relativeHumidity wd temp ps = min 1 (pp / pe)
+    where pp = partialAtmosphericWaterPressure wd temp
+          pe = equilibriumWaterPressure ps temp
 
+-- | dewpoint temperature
+dewpointTemperature :: Floating a => a -> a -> a
+dewpointTemperature temp humidity = temp - (100 - humidity * 100) / 5
 
 -- | Calculate coriolis force at the given latitude
 coriolisForce :: Floating a => Lat -> a
-coriolisForce lat =  -2 * 7.292e-5 * sin(toRad $ fromRational $ toRational $ fromLat lat)
+coriolisForce lat =  -2 * 7.292e-5 * sin(toRad (fromLat lat) )
 
 -- | Return coriolis force at given latitude
 --   but not less than 4e-5 in northern hemisphere and -4e-5 southern hemisphere
@@ -152,9 +157,9 @@ solarEnergyInflux (lat, lon) t = let (year, _, _) = toGregorian $ utctDay t
 -- | calculate temperature increase (K/s) at given coordinate
 --   cloudCover: cloud cover coefficient (0..1)
 temperatureDiffPerSecond :: (Ord a, Floating a) => (Lat, Lon) -> UTCTime -> a -> a
-temperatureDiffPerSecond coord t cloudCover =
+temperatureDiffPerSecond coord t condWaterDensity =
     let rawSolarInflux = solarEnergyInflux coord t
-        albedo = 0.3 + (0.6 * cloudCover) -- heuristic formula
+        albedo = 0.3 + (0.6 * cloudCover condWaterDensity  ) -- heuristic formula
         absorbedSolarInflux = (1.0 - albedo) * rawSolarInflux
     in absorbedSolarInflux / 1.8e6 -- experimental formula
 
@@ -166,6 +171,27 @@ temperatureDiffPerSecond coord t cloudCover =
 surfaceEvaporation :: (Ord a, Floating a) => a -> a -> a
 surfaceEvaporation ta ec = let t = toCelsius ta
                                tc = (min t 50) / 50
-                               pconst = 1e-9 -- kg/ (m^3 * sec)
+                               pconst = 1e-10 -- kg/ (m^3 * sec)
                            in if t <= 0 then 0
                               else ec * tc * pconst
+
+-- | condenation rate per second . Once temperature reaches dewpoint,
+--   water vapor begins to condense and form clouds.
+condensationRate :: Floating a => a
+condensationRate = 2e-5
+
+-- | calculate cloud cover given density of condensed water
+cloudCover :: (Floating a, Ord a) => a -> a
+cloudCover v = min (v * 1e5) 1
+
+-- | increase of water droplet size per second
+rainDropletsFormRate :: Floating a => a
+rainDropletsFormRate = 1e-2
+
+-- | calculates precipation probability based on avg water droplet size
+precipationProbability :: (Floating a, Ord a) => a -> a
+precipationProbability a = min 1 ( a * 4e1 )
+
+-- | precipation rate per seconds, depends on droplet size
+precipationRate :: Floating a => a -> a
+precipationRate dropletSize = dropletSize * condensationRate * 1e-3

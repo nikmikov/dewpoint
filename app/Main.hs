@@ -44,28 +44,38 @@ data MeteoStation = MeteoStation
 -- | output station data in format:
 --   SYD|-33.86,151.21,39|2015-12-23T05:02:12Z|Rain|+12.5|1004.3|97
 stationString :: G.Grid -> UTCTime -> MeteoStation -> String
-stationString g t st = printf "%3s|%9.5f,%9.5f|%s|%s|%+5.1f|%f|%2d|%10.4f|%10.4f|%10.4f"
-                       (iataCode st)
-                       lat lon
-                       (formatTime defaultTimeLocale "%FT%TZ" t)
-                       "Rain"
-                       (Ph.toCelsius temp)
-                       ps
-                       rh
-                       se
-                       u
-                       v
+stationString g t st =
+    printf
+    "%3s|%9.5f,%9.5f|%s|%s|%+5.1f|%f|%3d|%10.4f|%10.4f|%10.4f|%10.10f|%12.10f|%2.2f|%12.10f"
+    (iataCode st)
+    lat lon
+    (formatTime defaultTimeLocale "%FT%TZ" t)
+    rainTrig
+    (Ph.toCelsius temp)
+    ps
+    rh
+    se
+    u
+    v
+    wvd
+    wcd
+    cloud
+    rainDroplets
   where ix = gridCell st
         (lat, lon) = latLon st
         temp = (flip R.index ix . G.gridAirTemp ) g
         alt = (flip R.index ix . G.gridSurfaceHeight ) g
         ps  = Ph.altitudePressure alt temp
-        wd  = (flip R.index ix . G.gridWaterDensity ) g
-        rh  = toInteger $ round $ Ph.relativeHumidity wd temp ps
-        se::Double
+        wvd  = (flip R.index ix . G.gridVaporWater ) g
+        wcd  = (flip R.index ix . G.gridCondensedWater ) g
+        rh  = toInteger $ round $ 100 * Ph.relativeHumidity wvd temp ps
+        se :: Double
         se  = Ph.solarEnergyInflux (Geo.toLatLon lat lon) t
         v   = (G.gridVWind g) R.! ix
         u   = (G.gridUWind g) R.! ix
+        cloud = Ph.cloudCover wcd
+        rainDroplets = (G.gridWaterDropletsSz g) R.! ix
+        rainTrig = show $ (G.gridPrecipationTriggered g) R.! ix
 
 
 loadStations :: String -> S.Set T.Text -> G.Grid -> IO [MeteoStation]

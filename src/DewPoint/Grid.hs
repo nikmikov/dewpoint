@@ -54,9 +54,12 @@ data Grid = Grid {
     , gridAirTemp :: !DUArray
     , gridUWind :: !DUArray
     , gridVWind :: !DUArray
-    , gridCloudCover :: !DUArray
-    , gridWaterDensity :: !DUArray -- ^ density of water vapor in atmosphere
+    , gridCondensedWater :: !DUArray  -- ^ density of condensed water in atmosphere (clouds)
+    , gridVaporWater :: !DUArray      -- ^ density of water vapor in atmosphere
+    , gridWaterDropletsSz :: !DUArray -- ^ avg size of water droplet in the gridCondensedWater
+                                      --   when droplet become big enough it's going to rain
     , gridEvapCoeff :: !DUArray
+    , gridPrecipationTriggered :: R.Array R.U Ix Bool
   } deriving (Show)
 
 
@@ -72,13 +75,15 @@ gridCreate lats lons =
   , gridLons = lons'
   , gridShape = sh
   , gridCellGeoCoord = R.computeVectorS $ R.fromFunction sh (computeCellCenter lats' lons')
-  , gridSurfaceHeight = fill' 0
-  , gridAirTemp       = fill' 0
-  , gridUWind         = fill' 0
-  , gridVWind         = fill' 0
-  , gridCloudCover    = fill' 0
-  , gridWaterDensity  = fill' 0
-  , gridEvapCoeff     = fill' 0
+  , gridSurfaceHeight   = fill' 0
+  , gridAirTemp         = fill' 0
+  , gridUWind           = fill' 0
+  , gridVWind           = fill' 0
+  , gridCondensedWater  = fill' 0
+  , gridVaporWater      = fill' 0
+  , gridEvapCoeff       = fill' 0
+  , gridWaterDropletsSz = fill' 0
+  , gridPrecipationTriggered = (R.computeS . R.fromFunction sh . const) False
   }
   where lats' = S.sort $ S.fromList lats
         lons' = S.sort $ S.fromList lons

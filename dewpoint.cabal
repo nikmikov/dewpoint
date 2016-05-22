@@ -20,6 +20,7 @@ library
                      , DewPoint.Simulation
   build-depends:       base >= 4.7 && < 5
                      , repa >= 3.2
+                     , repa-algorithms
                      , containers
                      , time
   ghc-options:         -Wall -fno-ignore-asserts
