@@ -68,11 +68,11 @@ stationString verbose g t st =
         rh  = (round::Float->Int) $ 100 * Ph.relativeHumidity wvd temp ps
         se :: Double
         se  = Ph.solarEnergyInflux (Geo.toLatLon lat lon) t
-        v   = (G.gridVWind g) R.! ix
-        u   = (G.gridUWind g) R.! ix
+        v   = G.gridVWind g R.! ix
+        u   = G.gridUWind g R.! ix
         cloud = Ph.cloudCover wcd
-        rainDroplets = (G.gridWaterDropletsSz g) R.! ix
-        rainTrig = stateString  ((G.gridPrecipationTriggered g) R.! ix) temp cloud
+        rainDroplets = G.gridWaterDropletsSz g R.! ix
+        rainTrig = stateString  (G.gridPrecipationTriggered g R.! ix) temp cloud
 
 
 stateString :: (Floating a, Ord a) => Bool -> a -> a -> String
@@ -89,10 +89,10 @@ loadStations dataDir st g = do
       split' = T.splitOn (T.pack ";")
   content <- T.readFile $ dataDir </> "stations.csv"
   let stations = f content
-  if (length stations == length st)
+  if length stations == length st
   then return stations
   else fail $ "Stations not found: " ++ toDiffStr stations
-    where toStation (iata':country':city':name':lat':lon':[])
+    where toStation [iata':country':city':name':lat':lon']
               = MeteoStation iata' country' city' name' (lat, lon)
                 $ G.gridGetLocationIx g (Geo.toLatLon lat lon)
                     where (lat,lon) = (read lat', read lon')

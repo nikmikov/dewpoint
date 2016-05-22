@@ -29,7 +29,7 @@ toGrid (GridJson lats lons height seamask) =
       , gridSurfaceHeight = surfaceHeight
     }
     where g = gridCreate (toLat <$> lats') (toLon <$> lons' )
-          appendHead (x:xs) = (x:xs) ++ x:[]
+          appendHead (x:xs) = (x:xs) ++ [x]
           appendHead _ = []
           (lats', lons') = (appendHead  lats, appendHead lons)
           sh = gridShape g

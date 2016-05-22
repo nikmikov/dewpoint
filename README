@@ -50,6 +50,11 @@ Ocean water movement is not considered
 
         will visualise surface temperature
 
-        stack exec -- dewpoint-exe -s "SIN,SYD" -i 5 -p 60 -o plot | scripts/plot_data.py --wind
+        stack exec -- dewpoint-exe -s "SIN,SYD" -i 5 -p 60 -o plot | scripts/plot_data.py --winds
 
         will add winds vector field to the plot
+
+
+### Notes
+
+    Simulation become more or less stable after 15 calendar days

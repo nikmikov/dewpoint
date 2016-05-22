@@ -25,7 +25,7 @@ tempDiffSolarInflux :: (Ord a, Floating a, Unbox a) =>
                     -> G.Ix
                     -> a
 tempDiffSolarInflux g gridCloudCover t dt ix =
-    dt * Ph.temperatureDiffPerSecond ( (G.gridCellGeoCoord g) ! ix ) t ( gridCloudCover ! ix )
+    dt * Ph.temperatureDiffPerSecond ( G.gridCellGeoCoord g ! ix ) t ( gridCloudCover ! ix )
 
 -- | ------------------------------------------------------------------------------------
 -- temperature change due to emission, always negative
@@ -35,7 +35,7 @@ tempDiffEmission:: (Ord a, Floating a, Elt a, Unbox a) =>
                 -> R.Array R.D G.Ix a -- ^ decrease of temperature due to emission
 tempDiffEmission gridAirTemp tempAbsorbed =
     let minTemp = Ph.toKelvin (-70)
-        adjustTemp te' = ( max (te' - minTemp) 0 ) ** 4
+        adjustTemp te' = max (te' - minTemp) 0  ** 6
         tempE = R.map adjustTemp gridAirTemp
         tempEsum = R.sumAllS tempE
         tempCellEmissionCoeff = R.map (\v -> -v / tempEsum) tempE
@@ -113,18 +113,18 @@ calculateWind :: (Ord a, Floating a, Unbox a) =>
               -> G.Ix                 -- ^ cell index
               -> a
 calculateWind g ar calcWindFn getSrcFn ix =
-    let (lat,_) = (G.gridCellGeoCoord g) ! ix
-    in calcWindFn lat $ (calculateGrad getSrcFn) ar (G.gridCellLengthMeters g) ix
+    let (lat,_) = G.gridCellGeoCoord g ! ix
+    in calcWindFn lat $ calculateGrad getSrcFn ar (G.gridCellLengthMeters g) ix
 
 -- | ------------------------------------------------------------------------------------
 -- calculate U-wind component (zonal wind)
 calculateUWind :: (Ord a, Floating a, Unbox a) => G.Grid -> R.Array R.U G.Ix a -> G.Ix-> a
-calculateUWind g ar ix = calculateWind g ar Ph.geostrophicZonalWind (G.gridSrcCellY g) ix
+calculateUWind g ar = calculateWind g ar Ph.geostrophicZonalWind (G.gridSrcCellY g)
 
 -- | ------------------------------------------------------------------------------------
 -- calculate V-wind component (meridional wind)
 calculateVWind :: (Ord a, Floating a, Unbox a) => G.Grid -> R.Array R.U G.Ix a -> G.Ix -> a
-calculateVWind g ar ix = calculateWind g ar Ph.geostrophicMeridionalWind (G.gridSrcCellX g) ix
+calculateVWind g ar = calculateWind g ar Ph.geostrophicMeridionalWind (G.gridSrcCellX g)
 
 -- | ------------------------------------------------------------------------------------
 -- calculate pressure at 500Mb heights
@@ -193,7 +193,7 @@ integrate grid t dt = do
   -- changes of temperature due to advection caused by wind
   tempDiffA <- calculateAdvectionDiff
                gridSrcCellX gridSrcCellY gridAirTemp gridUWind gridVWind dts len
-  let tempDiffA' = R.map (\v -> if abs(v) / dts  > 0 then maxAdvPerSec * signum v else v  ) tempDiffA
+  let tempDiffA' = R.map (\v -> if abs v / dts  > 0 then maxAdvPerSec * signum v else v  ) tempDiffA
       maxAdvPerSec = 5.0 / (60 * 60) -- maximum 5 degrees / hour
   -- total change of temperature due to solar radiation and advection
   tempAbsorbed <- R.computeUnboxedP $ tempDiffS +^ tempDiffA'
@@ -223,25 +223,26 @@ integrate grid t dt = do
                                $ R.zipWith (\a b -> if a then b else 0)
                                  gridPrecipationTriggered gridWaterDropletsSz
 
-      waterVaporDiff = surfaceWaterEvaporation +^ waterVaporAdvection -^ waterCondensation
+      waterVaporDiff = surfaceWaterEvaporation  -^ waterCondensation +^ waterVaporAdvection
 
   -- ! condesed water advection
   waterCondensedAdvection <- calculateAdvectionDiff
                gridSrcCellX gridSrcCellY gridCondensedWater gridUWind gridVWind dts len
 
   waterCondensationDiff <- R.computeUnboxedP
-                           $ waterCondensedAdvection +^ waterCondensation -^ waterPrecipation
+                           $ waterCondensation -^ waterPrecipation +^ waterCondensedAdvection
 
   -- new water vapor density: + vapor - condensation
   waterVapor <- R.computeUnboxedP
                 $ R.zipWith (satAddMin 0) gridVaporWater waterVaporDiff
 
   -- cloud formation from condensed water
-  waterCondensed <- R.computeUnboxedP $ R.zipWith (satAddMin 0) gridCondensedWater waterCondensationDiff
+  waterCondensed <- R.computeUnboxedP
+                    $ R.zipWith (satAddMin 0) gridCondensedWater waterCondensationDiff
   -- forming droplets from condensed water
   let dropletSizeIncrease = R.map ( * (dts * Ph.rainDropletsFormRate) ) gridCondensedWater
       dropletScaleCoeff 0 _ = 0
-      dropletScaleCoeff a b =  ( a / (a + b) )
+      dropletScaleCoeff a b =  a / (a + b)
       dropletsScaled = R.zipWith (*) gridWaterDropletsSz
                        $ R.zipWith dropletScaleCoeff gridCondensedWater waterCondensationDiff
   waterDropletsSz <- R.computeUnboxedP $ R.zipWith (satAddMin 0) dropletsScaled dropletSizeIncrease
@@ -252,12 +253,12 @@ integrate grid t dt = do
       randIntAr = randomishIntArray sh 10 100 randSeed
   precipationTriggered <- R.computeUnboxedP $ R.zipWith (<) randIntAr precipationProb
 
-  return $! (grid {
-               G.gridAirTemp = tempTotal
-             , G.gridVWind = vWind
-             , G.gridUWind = uWind
-             , G.gridVaporWater = waterVapor
-             , G.gridCondensedWater = waterCondensed
-             , G.gridWaterDropletsSz = waterDropletsSz
-             , G.gridPrecipationTriggered = precipationTriggered
-             } , t')
+  return  (grid {
+             G.gridAirTemp = tempTotal
+           , G.gridVWind = vWind
+           , G.gridUWind = uWind
+           , G.gridVaporWater = waterVapor
+           , G.gridCondensedWater = waterCondensed
+           , G.gridWaterDropletsSz = waterDropletsSz
+           , G.gridPrecipationTriggered = precipationTriggered
+           } , t')
