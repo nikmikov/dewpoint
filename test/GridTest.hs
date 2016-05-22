@@ -1,7 +1,8 @@
-module GridTest(
-                prop_gridGetXY
-               , prop_gridSrcCellX
-               ) where
+module GridTest(gridTests) where
+
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.QuickCheck
 
 import Test.QuickCheck.Gen
 import Test.QuickCheck.Arbitrary
@@ -24,6 +25,23 @@ instance Arbitrary Lon where
 instance Arbitrary Grid where
     arbitrary = gridCreateFixed <$> pos <*> pos
         where pos = getPositive <$> arbitrary
+
+gridTests :: TestTree
+gridTests = testGroup "Grid Tests" [
+             testGroup "Unit tests"
+                           [ testCase "gridGeXY"
+                                          $ (0,0) @=? (ixToXY $ gridGetLocationIx (gridCreateFixed 100 200) (minBound, minBound))
+                           ],
+
+         testGroup "QuickCheck tests"
+                       [ testProperty "Quickcheck test 1" prop_gridGetXY
+                       , testProperty "Quickcheck test 2" prop_gridSrcCellX
+                       ],
+
+         testGroup "SmallCheck tests"
+                       [ --SC.testProperty "Negation" negation
+                       ]
+        ]
 
 prop_gridGetXY :: Grid -> (Lat, Lon) -> Property
 prop_gridGetXY grid (lat, lon) = True
