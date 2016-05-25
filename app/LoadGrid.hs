@@ -33,7 +33,7 @@ toGrid (GridJson lats lons height seamask) =
           appendHead _ = []
           (lats', lons') = (appendHead  lats, appendHead lons)
           sh = gridShape g
-          ec v = if v == 1 then 1 else 0.3
+          ec v = if v == 1 then 0.3 else 0.7
           evapCoeff = (R.computeS . R.map ec . R.fromListUnboxed sh) seamask
           height' = fromRational . toRational . min 0
           surfaceHeight = (R.computeS . R.map height' . R.fromListUnboxed sh) height

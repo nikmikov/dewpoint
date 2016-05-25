@@ -96,7 +96,7 @@ def main(argv=None):
     a_shape = ( len(lats), len(lons))
 
     fig, ax = plt.subplots()
-    lev = [x/2 for x in range(-80, 80, 1)]
+    lev = [x/4 for x in range(-160, 160, 1)]
     def update(data):
         Zc = data['temp']
         Z = np.reshape(np.asarray(Zc), a_shape)
