@@ -58,7 +58,7 @@ calculateAdvectionDiff getSrcU getSrcV valArray gridUWind gridVWind dt len =
            indexes  = R.fromFunction sh id
            calcAdv cx cy aX aY a0 = let dX = min maxChangeSec (cx * (aX - a0) )
                                         dY = min maxChangeSec (cy * (aY - a0) )
-                                        maxChangeSec =  a0 *  5e-2 * dt / (60*60) -- maximum 5% per hour
+                                        maxChangeSec =  a0 *  1e-1 * dt / (60*60) --maximum 10% per hour
                                     in [ dX + dY, -dX, -dY ]
            f ix (u, v) = let (cx, cy) = advectionCoefficients u v len dt
                          in (cx, cy, u, v, ix)

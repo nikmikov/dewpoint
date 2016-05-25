@@ -105,9 +105,10 @@ def import_grid(data_dir, force_reload):
         j = {}
         j['lats'] = np.asarray(hgt_file.variables['lat']).tolist()
         j['lons'] = np.asarray(hgt_file.variables['lon']).tolist()
-        j['height'] = np.asarray(hgt_file.variables['hgt'][0,:,:].transpose().flatten()).tolist()
-        j['land_sea_mask'] = np.asarray(land_file.variables['land'][0,:,:].
-                                        transpose().flatten()).tolist()
+        heights = np.asarray(hgt_file.variables['hgt'][0,:,:])
+        j['height'] = np.flipud(heights).transpose().flatten().tolist()
+        landseamask =  np.asarray(land_file.variables['land'][0,:,:])
+        j['land_sea_mask'] = np.flipud(landseamask).transpose().flatten().tolist()
         json.dump(j, jsonoutput)
         print("Grid imported!")
 

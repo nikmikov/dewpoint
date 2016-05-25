@@ -58,10 +58,12 @@ plotHeader g = Plot.encodeHeader "Temperature and U,V winds plot"
 
 plotFrame :: (G.Grid, UTCTime) -> BS.ByteString
 plotFrame (g, t) = Plot.encodeFrame t
+                   --cc
                    ( (map Ph.toCelsius .  R.toList . R.transpose . G.gridAirTemp)  g)
                    (R.toList $ R.transpose $ G.gridUWind g)
                    (R.toList $ R.transpose $ G.gridVWind g)
-
+    where cc = (R.toList . R.transpose . R.map Ph.cloudCover) (G.gridCondensedWater g)
+          hh = (R.toList . R.transpose) (G.gridEvapCoeff g)
 
 run :: Opt.ProgramOpt -> IO()
 run opt = do
